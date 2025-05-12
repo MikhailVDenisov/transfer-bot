@@ -42,14 +42,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "Чтобы начать, выберите нужную кнопку или введите команду /start."
     )
     keyboard = [
-        [
-            InlineKeyboardButton("Записаться на автобус", callback_data="book_bus"),
-            InlineKeyboardButton("Посмотреть свои запись", callback_data="view_booking"),
-        ],
-        [
-            InlineKeyboardButton("Отменить запись", callback_data="cancel_booking"),
-            InlineKeyboardButton("Как добраться?", callback_data="how_to_get_there"),
-        ],
+        [InlineKeyboardButton("Записаться на автобус", callback_data="book_bus")],
+        [InlineKeyboardButton("Посмотреть свои запись", callback_data="view_booking")],
+        [InlineKeyboardButton("Отменить запись", callback_data="cancel_booking")],
+        [InlineKeyboardButton("Как добраться?", callback_data="how_to_get_there")],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     if update.message:
@@ -85,7 +81,16 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def step_select_direction(query, context):
     buses = buses_sheet.get_all_records()
+
+    # Получение уникальных направлений, которые есть у автобусов
     directions = sorted(set(b['Direction'] for b in buses if 'Direction' in b and b['Direction'].strip()))
+    
+    # Проверка, есть ли вообще направления
+    if not directions:
+        await query.edit_message_text("На данный момент нет доступных направлений.")
+        return
+
+    # Формируем кнопки с направлениями
     keyboard = [
         [InlineKeyboardButton(direction, callback_data=f"select_direction_{direction}")]
         for direction in directions
@@ -111,8 +116,7 @@ async def show_buses_for_direction(query, context, direction):
     # Проверка, есть ли уже регистрация у пользователя на данное направление
     existing_res = [
         r for r in reservations
-        if r["Passenger"] == passenger["ID"]
-        and r.get("Direction", "") == direction
+        if r["Passenger"] == passenger["ID"] and r.get("Direction", "") == direction
     ]
     if existing_res:
         await query.edit_message_text("Вы уже зарегистрированы на это направление.")
@@ -124,17 +128,32 @@ async def show_buses_for_direction(query, context, direction):
     available_buses = []
     for bus in buses_for_direction:
         bus_reservations = [r for r in reservations if r["Bus"] == bus["ID"]]
-        if len(bus_reservations) < int(bus["Capacity"]):
+        capacity_value = bus.get("Capacity", "")
+        if isinstance(capacity_value, str):
+            capacity_str = capacity_value.strip()
+            try:
+                capacity = int(capacity_str)
+            except ValueError:
+                capacity = 0
+        elif isinstance(capacity_value, int):
+            capacity = capacity_value
+        else:
+            capacity = 0
+
+        free_places = capacity - len(bus_reservations)
+        if free_places > 0:
+            bus['FreePlaces'] = free_places
             available_buses.append(bus)
 
     if not available_buses:
-        await query.edit_message_text("Нет доступных автобусов для выбранного направления.")
+        await query.edit_message_text("На данный момент нет доступных автобусов для выбранного направления.")
         return
 
+    # Формируем кнопки с количеством свободных
     keyboard = [
         [
             InlineKeyboardButton(
-                f"Автобус {bus['Number']} ({bus['DepartureDate']} {bus['DepartureTime']})",
+                f"Автобус {bus['Number']} ({bus['DepartureDate']} {bus['DepartureTime']}) - свободно {bus['FreePlaces']}",
                 callback_data=f"select_bus_{bus['ID']}"
             )
         ] for bus in available_buses
@@ -151,8 +170,8 @@ async def confirm_booking(update, context, bus_id):
     passenger = next((p for p in passengers if p["Telegram_username"] == username), None)
     if not passenger:
         await query.edit_message_text(
-            "К сожалению, вы не входите в списки участников трансфера, "
-            "для проверки ситуации свяжитесь с администратором (@mdensov)."
+            "К сожалению, я не вижу вас в списках участиников кэмпа, "
+            "для решение данного вопроса, обратись к своему старшему, либо напиши: @havingfreckles"
         )
         return
 
@@ -210,8 +229,8 @@ async def view_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     passenger = next((p for p in passengers if p["Telegram_username"] == username), None)
     if not passenger:
         await query.edit_message_text(
-            "К сожалению, вы не входите в списки участников трансфера, "
-            "для проверки ситуации свяжитесь с администратором (@mdensov)."
+            "К сожалению, я не вижу вас в списках участиников кэмпа, "
+            "для решение данного вопроса, обратись к своему старшему, либо напиши: @havingfreckles"
         )
         return
 
@@ -223,18 +242,30 @@ async def view_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("Вы не записаны ни на один автобус")
         return
 
-    message = "Ваши записи:\n\n"
+    messages = ""
     for res in user_res:
         bus = next((b for b in buses if b["ID"] == res["Bus"]), None)
         if bus:
-            message += (
+            messages += (
                 f"Автобус: {bus['Number']} ({bus['DepartureDate']} {bus['DepartureTime']}) "
                 f"({bus['Departure_Place']}-{bus['Destination']})-{bus['Direction']}\n"
             )
 
-    keyboard = [[InlineKeyboardButton("Назад", callback_data="back_to_menu")]]
+    # Создаем кнопки для каждой записи брони
+    keyboard = []
+    for res in user_res:
+        bus = next((b for b in buses if b["ID"] == res["Bus"]), None)
+        if bus:
+            keyboard.append([
+                InlineKeyboardButton(
+                    f"Отменить бронь ({bus['Number']} {bus['DepartureDate']})",
+                    callback_data=f"cancel_reservation_{res['ID']}"
+                )
+            ])
+    keyboard.append([InlineKeyboardButton("Назад", callback_data="back_to_menu")])
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await query.edit_message_text(message, reply_markup=reply_markup)
+
+    await query.edit_message_text(messages or "У вас нет записей.", reply_markup=reply_markup)
 
 async def cancel_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -243,8 +274,8 @@ async def cancel_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     passenger = next((p for p in passengers if p["Telegram_username"] == username), None)
     if not passenger:
         await query.edit_message_text(
-            "К сожалению, вы не входите в списки участников трансфера, "
-            "для проверки ситуации свяжитесь с администратором (@mdensov)."
+            "К сожалению, я не вижу вас в списках участиников кэмпа, "
+            "для решение данного вопроса, обратись к своему старшему, либо напиши: @havingfreckles"
         )
         return
 
@@ -354,7 +385,7 @@ async def show_how_route_to_hotel(update: Update, context: ContextTypes.DEFAULT_
 
 
 async def confirm_booking(update, context, bus_id):
-    """Подтверждение записи на автобус"""
+    """Подтверждение записи на автобус с проверкой занятости мест"""
     query = update.callback_query
     username = query.from_user.username
     
@@ -362,8 +393,8 @@ async def confirm_booking(update, context, bus_id):
     passenger = next((p for p in passengers if p["Telegram_username"] == username), None)
     if not passenger:
         await query.edit_message_text(
-            "К сожалению, вы не входите в списки участников трансфера, "
-            "для проверки ситуации свяжитесь с администратором (@mdensov)."
+            "К сожалению, я не вижу вас в списках участиников кэмпа, "
+            "для решение данного вопроса, обратись к своему старшему, либо напиши: @havingfreckles"
         )
         return
 
@@ -375,8 +406,26 @@ async def confirm_booking(update, context, bus_id):
         await query.edit_message_text("Автобус не найден.")
         return
 
-    # Проверяем, есть ли регистрация на этот bus и направление
-    # Такое условие – если пользователь уже зарегистрирован на этот же автобус или на то же направление
+    # Получаем вместимость автобуса
+    capacity_value = bus.get("Capacity", "")
+    if isinstance(capacity_value, str):
+        capacity_str = capacity_value.strip()
+        try:
+            capacity = int(capacity_str)
+        except ValueError:
+            capacity = 0
+    elif isinstance(capacity_value, int):
+        capacity = capacity_value
+    else:
+        capacity = 0
+
+    # Проверка, заняты ли все места
+    bus_reservations = [r for r in reservations if r["Bus"] == str(bus_id)]
+    if len(bus_reservations) >= capacity:
+        await query.edit_message_text("Все места в автобусе уже заняты.")
+        return
+
+    # Проверка, есть ли регистрация на этот автобус и направление
     direction_value = bus.get("Direction", "")
     existing_res = [
         r for r in reservations
@@ -386,21 +435,12 @@ async def confirm_booking(update, context, bus_id):
         await query.edit_message_text("Вы уже зарегистрированы на этот автобус и направление.")
         return
 
-    # Проверяем свободные места
-    bus_reservations = [r for r in reservations if r["Bus"] == str(bus_id)]
-    if len(bus_reservations) >= int(bus["Capacity"]):
-        await query.edit_message_text("К сожалению, места на автобус закончились.")
-        return
-
-    # Находим максимальный ID
+    # Создание новой брони
     existing_ids = [int(val) for val in reservations_sheet.col_values(1) if val.replace('.', '', 1).isdigit()]
     max_id = max(existing_ids) if existing_ids else 0
-
-    # Сохраняем направление
-    direction = bus.get("Direction", "")
     new_id = str(max_id + 1)
+    direction = bus.get("Direction", "")
 
-    # Создаем новую бронь
     new_reservation = [
         new_id,
         str(passenger["ID"]),
