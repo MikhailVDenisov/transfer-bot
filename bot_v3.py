@@ -1,5 +1,6 @@
 import os
 import json
+import asyncio
 
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
@@ -30,6 +31,7 @@ spreadsheet = client.open_by_key(spreadsheet_id)
 passengers_sheet = spreadsheet.worksheet("Passengers")
 buses_sheet = spreadsheet.worksheet("Buses")
 reservations_sheet = spreadsheet.worksheet("Reservations")
+
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     welcome_message = (
@@ -76,6 +78,12 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await show_how_to_get_there(update, context)
     elif query.data == "route_to_hotel":
         await show_how_route_to_hotel(update, context)
+    elif query.data == "join_waiting_list":
+        await add_user_to_waiting_list_callback(update, context)
+    elif query.data == "waiting_list_back":
+        await start(update, context)
+    elif query.data.startswith("set_waiting_bus_"):
+        await handle_select_waiting_bus(update, context)
     elif query.data == "back_to_menu":
         await start(update, context)
 
@@ -108,8 +116,8 @@ async def show_buses_for_direction(query, context, direction):
     passenger = next((p for p in passengers if p["Telegram_username"] == username), None)
     if not passenger:
         await query.edit_message_text(
-            "К сожалению, я не вижу вас в списках участиников кэмпа, "
-            "для решение данного вопроса, обратись к своему старшему."
+            "К сожалению, я не вижу тебя в списках участиников кэмпа, "
+            "для решение данного вопроса, обратись к своему старшему, либо напиши: @havingfreckles"
         )
         return
 
@@ -125,102 +133,79 @@ async def show_buses_for_direction(query, context, direction):
     # Фильтрация автобусов по выбранному направлению
     buses_for_direction = [b for b in buses if b.get("Direction") == direction]
 
-    available_buses = []
+    # Собираем информацию о занятости и статусе автобусов
+    bus_info_list = []
     for bus in buses_for_direction:
-        bus_reservations = [r for r in reservations if r["Bus"] == bus["ID"]]
+        bus_id = bus["ID"]
         capacity_value = bus.get("Capacity", "")
-        if isinstance(capacity_value, str):
-            capacity_str = capacity_value.strip()
-            try:
-                capacity = int(capacity_str)
-            except ValueError:
-                capacity = 0
-        elif isinstance(capacity_value, int):
-            capacity = capacity_value
-        else:
+        try:
+            capacity = int(capacity_value.strip())
+        except:
             capacity = 0
+        bus_reservations = [r for r in reservations if r["Bus"] == bus_id]
+        booked = len(bus_reservations)
+        free_places = capacity - booked
+        bus['FreePlaces'] = free_places
+        has_places = free_places > 0
+        bus_info_list.append((bus, has_places))
 
-        free_places = capacity - len(bus_reservations)
-        if free_places > 0:
-            bus['FreePlaces'] = free_places
-            available_buses.append(bus)
+    # Отобрать все автобусы даже если они заполнены
+    all_buses = buses_for_direction
 
-    if not available_buses:
-        await query.edit_message_text("На данный момент нет доступных автобусов для выбранного направления.")
-        return
+    # Формируем сообщение
+    message = f"Все автобусы для направления {direction}:\n\n"
 
-    # Формируем кнопки с количеством свободных
-    keyboard = [
-        [
-            InlineKeyboardButton(
-                f"Автобус {bus['Number']} ({bus['DepartureDate']} {bus['DepartureTime']}) - свободно {bus['FreePlaces']}",
-                callback_data=f"select_bus_{bus['ID']}"
-            )
-        ] for bus in available_buses
-    ]
+    for bus in all_buses:
+        capacity_str = bus.get("Capacity", "0")
+        try:
+            capacity = int(capacity_str)
+        except:
+            capacity = 0
+        booked = sum(1 for r in reservations if r["Bus"] == bus["ID"])
+        free = capacity - booked
+        if free <= 0:
+            status = "Свободных мест: 0"
+        else:
+            status = f"Свободных мест: {free}"
+        message += (
+            f"Автобус {bus['ID']} ({bus['DepartureDate']} {bus['DepartureTime']}): {status}\n"
+        )
+
+    # Создавать кнопки для всех автобусов:
+    # - тех, у которых есть свободные места — кнопка для регистрации
+    # - тех, что заполнены — кнопка для постановки в очередь
+    keyboard = []
+
+    for bus in all_buses:
+        capacity_str = bus.get("Capacity", "0")
+        try:
+            capacity = int(capacity_str)
+        except:
+            capacity = 0
+        booked = sum(1 for r in reservations if r["Bus"] == bus["ID"])
+        free = capacity - booked
+        if free > 0:
+            # Есть свободные места — кнопка "Записаться"
+            keyboard.append([
+                InlineKeyboardButton(
+                    f"Автобус {bus['Number']} - {free} мест",
+                    callback_data=f"select_bus_{bus['ID']}"
+                )
+            ])
+        else:
+            # Полностью заполнен — кнопка "Записан и в очередь"
+            keyboard.append([
+                InlineKeyboardButton(
+                    f"Автобус {bus['Number']} - в лист ожидания",
+                    callback_data=f"set_waiting_bus_{bus['ID']}"
+                )
+            ])
+
     keyboard.append([InlineKeyboardButton("Назад", callback_data="back_to_menu")])
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await query.edit_message_text("Выберите автобус:", reply_markup=reply_markup)
 
-async def confirm_booking(update, context, bus_id):
-    """Подтверждение записи на автобус"""
-    query = update.callback_query
-    username = query.from_user.username
-    passengers = passengers_sheet.get_all_records()
-    passenger = next((p for p in passengers if p["Telegram_username"] == username), None)
-    if not passenger:
-        await query.edit_message_text(
-            "К сожалению, я не вижу вас в списках участиников кэмпа, "
-            "для решение данного вопроса, обратись к своему старшему, либо напиши: @havingfreckles"
-        )
-        return
+    await query.edit_message_text(message, reply_markup=reply_markup)
 
-    buses = buses_sheet.get_all_records()
-    reservations = reservations_sheet.get_all_records()
-
-    bus = next((b for b in buses if b["ID"] == bus_id), None)
-
-    if not bus:
-        await query.edit_message_text("Автобус не найден.")
-        return
-
-    # Проверка, что пользователь не зарегистрирован на этот автобус
-    user_res = [
-        r for r in reservations
-        if r["Passenger"] == passenger["ID"] and r["Bus"] == bus_id
-    ]
-    if user_res:
-        await query.edit_message_text("Вы уже записаны на этот автобус.")
-        return
-
-    # Проверка свободных мест
-    bus_reservations = [r for r in reservations if r["Bus"] == bus_id]
-    if len(bus_reservations) >= int(bus["Capacity"]):
-        await query.edit_message_text("К сожалению, места на автобус закончились.")
-        return
-
-    # Расчет нового ID для брони
-    existing_ids = [float(val) for val in reservations_sheet.col_values(1) if val.replace('.', '', 1).isdigit()]
-    max_id = max(existing_ids) if existing_ids else 0
-
-    # Вытаскиваем направление автобуса
-    direction = bus.get("Direction", "")
-
-    # Создаем новую запись
-    new_reservation = [
-        str(max_id + 1),
-        str(passenger["ID"]),
-        str(bus_id),
-        datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        direction,
-    ]
-    reservations_sheet.append_row(new_reservation)
-
-    await query.edit_message_text(
-        f"Вы успешно записаны на автобус: {bus['Number']} "
-        f"({bus['DepartureDate']} {bus['DepartureTime']}) "
-        f"{bus['Departure_Place']}-{bus['Destination']}"
-    )
 
 async def view_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -229,7 +214,7 @@ async def view_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     passenger = next((p for p in passengers if p["Telegram_username"] == username), None)
     if not passenger:
         await query.edit_message_text(
-            "К сожалению, я не вижу вас в списках участиников кэмпа, "
+            "К сожалению, я не вижу тебя в списках участиников кэмпа, "
             "для решение данного вопроса, обратись к своему старшему, либо напиши: @havingfreckles"
         )
         return
@@ -242,30 +227,19 @@ async def view_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("Вы не записаны ни на один автобус")
         return
 
-    messages = ""
-    for res in user_res:
-        bus = next((b for b in buses if b["ID"] == res["Bus"]), None)
-        if bus:
-            messages += (
-                f"Автобус: {bus['Number']} ({bus['DepartureDate']} {bus['DepartureTime']}) "
-                f"({bus['Departure_Place']}-{bus['Destination']})-{bus['Direction']}\n"
-            )
-
-    # Создаем кнопки для каждой записи брони
+    message = "Ваши записи:\n\n"
     keyboard = []
     for res in user_res:
         bus = next((b for b in buses if b["ID"] == res["Bus"]), None)
         if bus:
-            keyboard.append([
-                InlineKeyboardButton(
-                    f"Отменить бронь ({bus['Number']} {bus['DepartureDate']})",
-                    callback_data=f"cancel_reservation_{res['ID']}"
-                )
-            ])
-    keyboard.append([InlineKeyboardButton("Назад", callback_data="back_to_menu")])
-    reply_markup = InlineKeyboardMarkup(keyboard)
+            message += (
+                f"Автобус: {bus['Number']} ({bus['DepartureDate']} {bus['DepartureTime']}) "
+                f"({bus['Departure_Place']}-{bus['Destination']})-{bus['Direction']}\n"
+            )
+            keyboard.append([InlineKeyboardButton(f"Отменить бронь: Автобус: {bus['Number']}-{bus['Direction']}", callback_data=f"cancel_reservation_{res['ID']}")])
 
-    await query.edit_message_text(messages or "У вас нет записей.", reply_markup=reply_markup)
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await query.edit_message_text(message, reply_markup=reply_markup)
 
 async def cancel_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -274,7 +248,7 @@ async def cancel_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     passenger = next((p for p in passengers if p["Telegram_username"] == username), None)
     if not passenger:
         await query.edit_message_text(
-            "К сожалению, я не вижу вас в списках участиников кэмпа, "
+            "К сожалению, я не вижу тебя в списках участиников кэмпа, "
             "для решение данного вопроса, обратись к своему старшему, либо напиши: @havingfreckles"
         )
         return
@@ -391,9 +365,10 @@ async def confirm_booking(update, context, bus_id):
     
     passengers = passengers_sheet.get_all_records()
     passenger = next((p for p in passengers if p["Telegram_username"] == username), None)
+
     if not passenger:
         await query.edit_message_text(
-            "К сожалению, я не вижу вас в списках участиников кэмпа, "
+            "К сожалению, я не вижу тебя в списках участиников кэмпа, "
             "для решение данного вопроса, обратись к своему старшему, либо напиши: @havingfreckles"
         )
         return
@@ -455,23 +430,210 @@ async def confirm_booking(update, context, bus_id):
         f"{bus['Departure_Place']}-{bus['Destination']}"
     )
 
-def main() -> None:
-    application = Application.builder().token(TOKEN).build()
+    # Если есть запись на бронирование в статусе Waiting, удалить её
+    reservations = reservations_sheet.get_all_records()  # обновляем список
+    waiting_res = [
+        r for r in reservations
+        if r["Passenger"] == str(passenger["ID"]) and r["Bus"] == str(bus_id) and r.get("Status") == "Waiting"
+    ]
+    for res in waiting_res:
+        cell = reservations_sheet.find(str(res["ID"]))
+        reservations_sheet.delete_rows(cell.row)
+
+
+async def process_waiting_list(application: Application):
+    """Автоматическая проверка и оповещение, если есть места и люди в очереди."""
+    ws = spreadsheet.worksheet("WaitingList")
+    reservations_ws = reservations_sheet
+    buses = buses_sheet.get_all_records()
+    reservations = reservations_ws.get_all_records()
+    waiting_records = ws.get_all_records()
+    # Исправляем получение Capacity: convertим в int и добавляем проверку на некорректные значения
+    bus_capacity = {}
+    for b in buses:
+        capacity_str = b.get('Capacity', '0')
+        try:
+            capacity_int = int(capacity_str)
+        except:
+            capacity_int = 0
+        bus_capacity[b['ID']] = capacity_int
+
+    bus_reserved_counts = {}
+    for b in buses:
+        bus_reserved_counts[b['ID']] = sum(1 for r in reservations if r["Bus"] == b['ID'])
+        # Обязательно проверяйте, что они сравнивают с правильным статусом и количеством
+
+    for wait in waiting_records:
+        if wait["Status"] != "Waiting":
+            continue
+
+        bus_id = wait["BusID"]
+        passenger_id = wait["PassengerID"]
+        if bus_id not in bus_capacity:
+            continue
+
+        free_places = bus_capacity[bus_id] - bus_reserved_counts.get(bus_id, 0)
+
+        # Исправляем условие, чтобы оно учитывало правильное сравнение
+        if free_places > 0:
+            # Меняем статус в листе ожидания на "Confirmed"
+            cells = ws.findall(str(wait["ID"]))
+            for cell in cells:
+                ws.update_cell(cell.row, 5, "Confirmed")
+            # Уведомление пассажира
+
+            passengers = passengers_sheet.get_all_records()
+            passenger = next((p for p in passengers if p["ID"] == passenger_id), None)
+            buses_list = buses_sheet.get_all_records()
+            bus = next((b for b in buses_list if b["ID"] == bus_id), None)
+
+            if passenger and bus:
+                callback_data = f"select_bus_{bus['ID']}"
+                keyboard = [
+                    [
+                        InlineKeyboardButton(
+                            "Подтвердить бронь",
+                            callback_data=callback_data
+                        )
+                    ]
+                ]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                await application.bot.send_message(
+                    chat_id=passenger["ChatID"],
+                    text=f"Место на автобус {bus['Number']} ({bus['DepartureDate']} {bus['DepartureTime']}) доступно! Хотите подтвердить бронь?",
+                    reply_markup=reply_markup
+                )
+
+
+async def post_init(application: Application):
+    asyncio.create_task(periodic(application))
+
+
+async def confirm_waiting(update, context):
+    user = update.message.from_user
+    passenger = next((p for p in passengers_sheet.get_all_records() if p["Telegram_username"] == user.username), None)
+    if not passenger:
+        await update.message.reply_text("Пользователь не найден.")
+        return
+    ws = spreadsheet.worksheet("WaitingList")
+    all_records = ws.get_all_records()
+    for rec in all_records:
+        if rec["PassengerID"] == str(passenger["ID"]) and rec["Status"] == "Confirmed":
+            await update.message.reply_text("Вы уже подтвердили бронь.")
+            return
+        elif rec["PassengerID"] == str(passenger["ID"]) and rec["Status"] == "Waiting":
+            ws.update_cell(ws.find(rec["ID"]).row, 5, "Confirmed")
+            # Создать бронь
+            reservations = reservations_sheet.get_all_records()
+            buses = buses_sheet.get_all_records()
+            bus_id = rec["BusID"]
+            bus = next((b for b in buses if b["ID"] == bus_id), None)
+            if not bus:
+                await update.message.reply_text("Автобус не найден.")
+                return
+            current_res = [r for r in reservations if r["Bus"] == bus_id and r.get("Status") == "Booked"]
+            if len(current_res) >= int(bus.get("Capacity", "0").strip()):
+                await update.message.reply_text("Места в автобусе уже заняты.")
+                return
+            existing_ids = [int(r["ID"]) for r in reservations if r["ID"].isdigit()]
+            new_id = str(max(existing_ids) + 1 if existing_ids else 1)
+            reservations_sheet.append_row([
+                new_id,
+                str(passenger["ID"]),
+                str(bus_id),
+                datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "Booked",
+                bus.get("Direction", "")
+            ])
+            await update.message.reply_text("Бронь подтверждена. Удачи!")
+            return
+    await update.message.reply_text("Нет ожидающих для подтверждения или уже подтверждены.")
+
+async def add_user_to_waiting_list_callback(update, context):
+    query = update.callback_query
+    user = query.from_user
+    passenger = next((p for p in passengers_sheet.get_all_records() if p["Telegram_username"] == user.username), None)
+    if not passenger:
+        await query.answer("Пользователь не найден.")
+        return
+    # Предложить выбрать автобус для постановки в очередь
+    buses = buses_sheet.get_all_records()
+    if not buses:
+        await query.answer("Нет автобусов для очереди.")
+        return
+    keyboard = [
+        [InlineKeyboardButton(f"Автобус {b['Number']} ({b['DepartureDate']} {b['DepartureTime']})", callback_data=f"set_waiting_bus_{b['ID']}")]
+        for b in buses
+    ]
+    keyboard.append([InlineKeyboardButton("Отмена", callback_data="back_to_menu")])
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await query.edit_message_text("Выберите автобус для постановки в очередь:", reply_markup=reply_markup)
+
+async def handle_select_waiting_bus(update, context):
+    query = update.callback_query
+    if query.data.startswith("set_waiting_bus_"):
+        bus_id = query.data.split("_", 3)[3]
+        user = query.from_user
+        passenger = next((p for p in passengers_sheet.get_all_records() if p["Telegram_username"] == user.username), None)
+
+        if not passenger:
+            await query.answer("Пользователь не найден.")
+            return
+
+        ws = spreadsheet.worksheet("WaitingList")
+        existing = ws.findall(str(passenger["ID"]))
+
+        for cell in existing:
+            row = cell.row
+            b_id_cell = ws.cell(row, 3)
+            status_cell = ws.cell(row, 5)
+            if b_id_cell.value == bus_id and status_cell.value == "Waiting":
+                await query.edit_message_text("Вы уже в очереди на этот автобус.")
+                await query.answer()
+                return
+
+        existing_records = ws.get_all_records()
+        print(existing_records)
+        new_id = max([int(r["ID"]) for r in existing_records]+[0]) + 1
+        ws.append_row([
+            str(new_id),
+            str(passenger["ID"]),
+            str(bus_id),
+            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "Waiting",
+            "No"
+        ])
+        await query.edit_message_text("Вы поставлены в очередь на выбранный автобус. Ожидайте уведомлений о доступных местах.")
+        await query.answer()
+
+async def handle_waiting_list_entry(update, context):
+    # Пользователь вызвал команду или кнопку для вхождения в лист ожидания
+    await add_user_to_waiting_list_callback(update, context)
+
+async def handle_waiting_list_back(update, context):
+    await start(update, context)
+
+async def periodic(application):
+    while True:
+        try:
+            await process_waiting_list(application)
+        except Exception as e:
+            import pdb; pdb.set_trace()
+            print(f"Ошибка: {e}")
+        await asyncio.sleep(300)  # TODO: Вынести это в переменную окружения
+
+
+def main():
+    application = Application.builder().token(TOKEN).post_init(post_init).build()
 
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CallbackQueryHandler(button))
+    application.add_handler(CommandHandler("confirm", confirm_waiting))
+    application.add_handler(CommandHandler("wait", handle_waiting_list_entry))
+    # Периодическая обработка листа ожидания
+
 
     application.run_polling()
 
 if __name__ == "__main__":
     main()
-# В таблице `Reservations` необходимо добавить колонку `Direction`, чтобы хранить выбранное направление.
-
-# В итоге, чтобы внедрить:
-# 1. Добавьте колонку `Direction` в лист `Buses` (если еще не сделано).
-# 2. В функции отображения автобусов по выбранному направлению — несколько новых вызовов и проверок.
-# 3. Перед бронированием проверяйте, зарегистрирован ли пользователь уже на это направление (по колонке `Direction`).
-
-# Основная идея: при выборе направления сохраняем его в данных брони, и перед бронированием проверяем, есть ли уже регистрация по тому же направлению.
-
-# После этого у вас будет функционал выбора направления и проверка на дублироаение.
