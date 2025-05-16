@@ -149,7 +149,7 @@ async def show_buses_for_direction(query, context, direction):
     if not passenger:
         await query.edit_message_text(
             "К сожалению, я не вижу тебя в списках участиников кэмпа, "
-            "для решение данного вопроса, обратись к своему старшему, либо напиши: @havingfreckles"
+            "для решение данного вопроса, обратись к своему старшему, либо напиши: @maximovd"
         )
         return
 
@@ -247,7 +247,7 @@ async def view_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not passenger:
         await query.edit_message_text(
             "К сожалению, я не вижу тебя в списках участиников кэмпа, "
-            "для решение данного вопроса, обратись к своему старшему, либо напиши: @havingfreckles"
+            "для решение данного вопроса, обратись к своему старшему, либо напиши: @maximovd"
         )
         return
 
@@ -281,7 +281,7 @@ async def cancel_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not passenger:
         await query.edit_message_text(
             "К сожалению, я не вижу тебя в списках участиников кэмпа, "
-            "для решение данного вопроса, обратись к своему старшему, либо напиши: @havingfreckles"
+            "для решение данного вопроса, обратись к своему старшему, либо напиши: @maximovd"
         )
         return
 
@@ -437,7 +437,7 @@ async def confirm_booking(update, context, bus_id):
     if not passenger:
         await query.edit_message_text(
             "К сожалению, я не вижу тебя в списках участиников кэмпа, "
-            "для решение данного вопроса, обратись к своему старшему, либо напиши: @havingfreckles"
+            "для решение данного вопроса, обратись к своему старшему, либо напиши: @maximovd"
         )
         return
 
