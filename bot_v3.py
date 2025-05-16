@@ -337,7 +337,7 @@ async def delete_reservation(update, context, reservation_id):
     await query.edit_message_text("Ваша запись отменена.")
 
 async def show_how_to_get_there(update: Update, context: ContextTypes.DEFAULT_TYPE):
-   info_message = (
+    info_message = (
         "Планируете добираться до мероприятия самостоятельно?\n"
         "Мы собрали для вас удобные варианты проезда различными видами транспорта – выбирайте свой!\n"
         "**Адрес отеля**: Московская область, Ногинский район, д. Новая Купавна, местечко Родинки, ул. Сиреневая, д.21 стр.1\n"
