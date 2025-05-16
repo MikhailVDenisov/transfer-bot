@@ -46,21 +46,38 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     if username:
         try:
-            # Попытка найти запись по username
-            # Предполагаем, что в таблице есть столбец "Telegram_username"
+            # Попытка найти запись по username в таблице Google Sheets
             cell = passengers_sheet.find(username)
             # Проверка, если поле ChatID пустое, обновляем его
-            chatid_col_idx = None
             headers = passengers_sheet.row_values(1)
             if "ChatID" in headers:
                 chatid_col_idx = headers.index("ChatID") + 1
-            if chatid_col_idx:
                 current_value = passengers_sheet.cell(cell.row, chatid_col_idx).value
                 if not current_value and chat_id:
                     passengers_sheet.update_cell(cell.row, chatid_col_idx, str(chat_id))
         except:
-            # Пользователь не найден в таблице, можно оставить так или добавить лог
-            pass
+            # Пользователь не найден, добавляем его в таблицу
+            headers = passengers_sheet.row_values(1)
+            data = []
+            if "Telegram_username" in headers:
+                username_idx = headers.index("Telegram_username") + 1
+            else:
+                username_idx = None
+            if "ChatID" in headers:
+                chatid_idx = headers.index("ChatID") + 1
+            else:
+                chatid_idx = None
+            # Предполагаем, что таблица уже содержит эти столбцы
+            # Создаём новую строку с заполненными данными
+            new_row = []
+            for header in headers:
+                if header == "Telegram_username":
+                    new_row.append(username or "")
+                elif header == "ChatID":
+                    new_row.append(str(chat_id) if chat_id else "")
+                else:
+                    new_row.append("")
+            passengers_sheet.append_row(new_row)
 
     # Остальной код стартового сообщения
     welcome_message = (
