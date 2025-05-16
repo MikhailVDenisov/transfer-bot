@@ -46,9 +46,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     if username:
         try:
-            # Попытка найти запись по username в таблице Google Sheets
+            # Проверка, есть ли пользователь в таблице по username
             cell = passengers_sheet.find(username)
-            # Проверка, если поле ChatID пустое, обновляем его
+            # Если есть, обновляем ChatID, если он пустой
             headers = passengers_sheet.row_values(1)
             if "ChatID" in headers:
                 chatid_col_idx = headers.index("ChatID") + 1
@@ -56,19 +56,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 if not current_value and chat_id:
                     passengers_sheet.update_cell(cell.row, chatid_col_idx, str(chat_id))
         except:
-            # Пользователь не найден, добавляем его в таблицу
+            # Пользователь не найден, создаем новую запись
             headers = passengers_sheet.row_values(1)
-            data = []
-            if "Telegram_username" in headers:
-                username_idx = headers.index("Telegram_username") + 1
-            else:
-                username_idx = None
-            if "ChatID" in headers:
-                chatid_idx = headers.index("ChatID") + 1
-            else:
-                chatid_idx = None
-            # Предполагаем, что таблица уже содержит эти столбцы
-            # Создаём новую строку с заполненными данными
             new_row = []
             for header in headers:
                 if header == "Telegram_username":
@@ -79,7 +68,32 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                     new_row.append("")
             passengers_sheet.append_row(new_row)
 
-    # Остальной код стартового сообщения
+            # Получение максимального ID и добавление нового
+            if "ID" in headers:
+                id_col_idx = headers.index("ID") + 1
+                all_ids = passengers_sheet.col_values(id_col_idx)[1:]  # пропускаем заголовок
+                max_id = 0
+                for val in all_ids:
+                    try:
+                        num = int(val)
+                        if num > max_id:
+                            max_id = num
+                    except:
+                        continue
+                new_id = max_id + 1
+                # Формируем новую строку с новым ID, username и ChatID
+                new_row = []
+                for header in headers:
+                    if header == "Telegram_username":
+                        new_row.append(username or "")
+                    elif header == "ChatID":
+                        new_row.append(str(chat_id) if chat_id else "")
+                    elif header == "ID":
+                        new_row.append(str(new_id))
+                    else:
+                        new_row.append("")
+                passengers_sheet.append_row(new_row)
+        # Остальной код стартового сообщения
     welcome_message = (
         "Привет! Я трансфер-бот!\n\n"
         "С чем я могу помочь:\n"
