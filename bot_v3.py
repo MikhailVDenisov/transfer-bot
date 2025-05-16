@@ -58,17 +58,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         except:
             # Пользователь не найден, создаем новую запись
             headers = passengers_sheet.row_values(1)
-            new_row = []
-            for header in headers:
-                if header == "Telegram_username":
-                    new_row.append(username or "")
-                elif header == "ChatID":
-                    new_row.append(str(chat_id) if chat_id else "")
-                else:
-                    new_row.append("")
-            passengers_sheet.append_row(new_row)
-
-            # Получение максимального ID и добавление нового
+            # Получаем список существующих ID
             if "ID" in headers:
                 id_col_idx = headers.index("ID") + 1
                 all_ids = passengers_sheet.col_values(id_col_idx)[1:]  # пропускаем заголовок
@@ -81,7 +71,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                     except:
                         continue
                 new_id = max_id + 1
-                # Формируем новую строку с новым ID, username и ChatID
+                # Создание новой строки
                 new_row = []
                 for header in headers:
                     if header == "Telegram_username":
@@ -93,7 +83,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                     else:
                         new_row.append("")
                 passengers_sheet.append_row(new_row)
-        # Остальной код стартового сообщения
+            # Если поля "ID" нет, ничего не делаем
+    # Остальной код стартового сообщения
     welcome_message = (
         "Привет! Я трансфер-бот!\n\n"
         "С чем я могу помочь:\n"
