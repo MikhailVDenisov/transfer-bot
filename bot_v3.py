@@ -34,6 +34,35 @@ reservations_sheet = spreadsheet.worksheet("Reservations")
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    # Получение chat_id и username пользователя
+    chat_id = None
+    username = None
+    if update.message:
+        chat_id = update.message.chat_id
+        username = update.message.from_user.username
+    elif update.callback_query:
+        chat_id = update.callback_query.message.chat_id
+        username = update.callback_query.from_user.username
+
+    if username:
+        try:
+            # Попытка найти запись по username
+            # Предполагаем, что в таблице есть столбец "Telegram_username"
+            cell = passengers_sheet.find(username)
+            # Проверка, если поле ChatID пустое, обновляем его
+            chatid_col_idx = None
+            headers = passengers_sheet.row_values(1)
+            if "ChatID" in headers:
+                chatid_col_idx = headers.index("ChatID") + 1
+            if chatid_col_idx:
+                current_value = passengers_sheet.cell(cell.row, chatid_col_idx).value
+                if not current_value and chat_id:
+                    passengers_sheet.update_cell(cell.row, chatid_col_idx, str(chat_id))
+        except:
+            # Пользователь не найден в таблице, можно оставить так или добавить лог
+            pass
+
+    # Остальной код стартового сообщения
     welcome_message = (
         "Привет! Я трансфер-бот!\n\n"
         "С чем я могу помочь:\n"
@@ -48,6 +77,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         [InlineKeyboardButton("Посмотреть свои запись", callback_data="view_booking")],
         [InlineKeyboardButton("Отменить запись", callback_data="cancel_booking")],
         [InlineKeyboardButton("Как добраться?", callback_data="how_to_get_there")],
+        [InlineKeyboardButton("FAQ", callback_data="render_faq")],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     if update.message:
@@ -84,6 +114,8 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await start(update, context)
     elif query.data.startswith("set_waiting_bus_"):
         await handle_select_waiting_bus(update, context)
+    elif query.data.startswith("render_faq"):
+        await render_faq(update, context)
     elif query.data == "back_to_menu":
         await start(update, context)
 
@@ -101,7 +133,7 @@ async def step_select_direction(query, context):
     # Формируем кнопки с направлениями
     keyboard = [
         [InlineKeyboardButton(direction, callback_data=f"select_direction_{direction}")]
-        for direction in directions
+        for direction in reversed(directions)
     ]
     keyboard.append([InlineKeyboardButton("Назад", callback_data="back_to_menu")])
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -334,6 +366,35 @@ async def show_how_to_get_there(update: Update, context: ContextTypes.DEFAULT_TY
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await query.edit_message_text(info_message, reply_markup=reply_markup, parse_mode="Markdown")
+
+async def render_faq(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    faq_text = (
+        "1. **Как записаться?** Открой бота → нажми /start → записаться на автобус → выбери направление → выбери автобус → нажми «Записаться». Готово!\n"
+        "\n"
+        "2. **Что, если я хочу и туда, и обратно?** Нужно пройти процесс записи дважды — сначала в одном направлении, потом в другом.\n"
+        "\n"
+        "3. **Что, если в нужном автобусе нет мест?** Это значит, что все места на выбранный автобус уже заняты. Однако ты всё равно можешь выбрать его в боте, чтобы попасть в лист ожидания. Если кто-то откажется от своей брони, ты получишь уведомление от бота и сможешь забронировать освободившееся место.\n"
+        "\n"
+        "4. **Как посмотреть свою бронь?** Через кнопку «Мои записи» в меню. Там же можно отменить любую бронь.\n"
+        "\n"
+        "5. **Могу ли я изменить автобус?** Да — сначала отмени текущую запись, потом выбери другой автобус.\n"
+        "\n"
+        "6. **Почему бот не пускает?** Вероятно, твой Telegram-ник не совпадает с базой волонтёров. Обратись к своему старшему или проверь, с какого аккаунта ты зашёл.\n"
+        "\n"
+        "7. **Куда писать, если ничего не работает?** Если бот не пускает или что-то сломалось, напиши Нике @havingfreckles или в общий чат ProductCamp во вкладку «Трансфер»\n"
+        "\n"
+        "8. **Что значит «в листе ожидания»?** Это значит, что автобус, на который ты хотел(а) записаться, уже заполнен. Однако бот всё равно добавил тебя в лист ожидания. Если кто-то отменит бронь — ты получишь уведомление и сможешь забронировать освободившееся место.\n"
+        "\n"
+        "9. **Можно ли записаться на несколько автобусов сразу?** Нет, по одному направлению можно иметь только одну активную запись. Сначала отмени предыдущую, если хочешь сменить автобус.\n"
+        "\n"
+        "10.**А если я хочу добраться до ProductCamp самостоятельно?** В боте ты сможешь найти информацию о маршрутах и способах доехать до ProductCamp. Для этого просто зайди в бота, нажми «/start», а затем в меню нажми на кнопку «Как добраться до Product Camp».\n"
+        "\n"
+        "11.**Почему автобусов так мало и расписание такое неудобное?** Мы понимаем, что расписание может подойти не всем. У нас ограниченный бюджет, и мы старались распределить автобусы так, чтобы охватить максимальное число кэмпчан. Надеемся, что выбранные будут удобными для большинства.\n"
+        "\n"
+        "Пользуйся ботом, экономь своё время и не забудь забронировать место заранее! Если будут вопросы — мы будем в общем чате ProductCamp во вкладке «Трансфер» 😊\n"
+    )
+    query = update.callback_query
+    await query.edit_message_text(faq_text, parse_mode="Markdown")
 
 async def show_how_route_to_hotel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     image_url = "https://lh7-rt.googleusercontent.com/docsz/AD_4nXeTgIHj8xL5841KSiK2TweN4zWuVuVyl9kEzjhLycPcNMlVY3Q2K4ArRzdy1ZpGIXbS6-hYWmNEpYq4h6B2py8EmfDX1w3K225docCZAXI3Esh6iKHBPKhad-QUSq1ND68n4HhE0w?key=pfElDP_kPhatX9dfoNbfQj_I"
