@@ -121,6 +121,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
     await query.answer()
+
     if query.data == "book_bus":
         await step_select_direction(query, context)
     elif query.data == "view_booking":
@@ -148,111 +149,100 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await handle_select_waiting_bus(update, context)
     elif query.data.startswith("render_faq"):
         await render_faq(update, context)
-    elif query.data == "back_to_menu":
-        await start(update, context)
     elif query.data == "export_buses":
         await export_buses(update, context)
+    elif query.data == "back_to_menu":
+        await start(update, context)
 
         
-async def export_buses(update, context):
-    """Асинхронно создает XLSX файл с пассажирами по автобусам и показывает прогресс"""
-    query = update.callback_query
-    if query:
-        await query.answer()
-        message = await query.edit_message_text("Начинаем выгрузку данных...")
-    else:
-        message = await update.message.reply_text("Начинаем выгрузку данных...")
-
+async def export_buses(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    import openpyxl
+    """Асинхронная выгрузка данных в Excel с обработкой всех ошибок"""
     try:
-        # Получаем данные асинхронно
-        await message.edit_text("🔄 Получаем данные об автобусах...")
-        buses = await asyncio.to_thread(buses_sheet.get_all_records)
-        
-        await message.edit_text("🔄 Получаем данные о бронированиях...")
-        reservations = await asyncio.to_thread(reservations_sheet.get_all_records)
-        
-        await message.edit_text("🔄 Получаем данные о пассажирах...")
-        passengers = await asyncio.to_thread(passengers_sheet.get_all_records)
+        # Проверка прав доступа
+        user = update.effective_user
+        if not user or user.username.lower() != "maximovd":
+            if update.callback_query:
+                await update.callback_query.answer("⚠️ Доступ запрещен", show_alert=True)
+            return
 
-        # Создаем книгу
-        await message.edit_text("📊 Создаем файл...")
-        wb = Workbook()
-        if "Sheet" in wb.sheetnames:
-            wb.remove(wb["Sheet"])
+        # Уведомление о начале процесса
+        if update.callback_query:
+            await update.callback_query.answer()
+            msg = await update.callback_query.edit_message_text("🔄 Подготовка отчета...")
+        else:
+            msg = await update.message.reply_text("🔄 Подготовка отчета...")
 
-        # Группируем брони по автобусам
-        reservations_by_bus = {}
-        for r in reservations:
-            bus_id = r["Bus"]
-            if bus_id not in reservations_by_bus:
-                reservations_by_bus[bus_id] = []
-            reservations_by_bus[bus_id].append(r)
-
-        total_buses = len(buses)
-        processed = 0
-
-        # Обрабатываем каждый автобус
-        for bus in buses:
-            processed += 1
-            progress = int(processed / total_buses * 100)
-            bus_id_str = str(bus["ID"])
-            
-            await message.edit_text(
-                f"📝 Обрабатываем автобусы... ({progress}%)\n"
-                f"Автобус {bus['Number']} ({bus['Direction']})"
+        # Асинхронное получение данных
+        try:
+            buses, reservations, passengers = await asyncio.gather(
+                asyncio.to_thread(buses_sheet.get_all_records),
+                asyncio.to_thread(reservations_sheet.get_all_records),
+                asyncio.to_thread(passengers_sheet.get_all_records)
             )
+        except Exception as e:
+            raise Exception(f"Ошибка получения данных из Google Sheets: {str(e)}")
 
-            # Получаем пассажиров для этого автобуса
-            bus_reservations = reservations_by_bus.get(bus_id_str, [])
-            passenger_names = []
-
-            for res in bus_reservations:
-                passenger_id = res["Passenger"]
-                passenger = next((p for p in passengers if p["ID"] == str(passenger_id)), None)
-                if passenger:
-                    username = passenger.get("Telegram_username", "")
-                    fio = passenger.get("FIO", "")
-                    name_display = username or fio or "Без имени"
-                    passenger_names.append(name_display)
-
-            # Создаем лист для автобуса
-            sheet_name = f"Bus_{bus['Number']}"[:31]  # Ограничение длины имени листа
-            ws = wb.create_sheet(title=sheet_name)
-            
-            # Заполняем данные
-            ws.append(["№", "Пассажир", "Телеграм", "ФИО"])
-            for idx, name in enumerate(passenger_names, start=1):
-                passenger_id = bus_reservations[idx-1]["Passenger"]
-                passenger = next((p for p in passengers if p["ID"] == str(passenger_id)), None)
-                if passenger:
-                    ws.append([
-                        idx,
-                        name,
-                        passenger.get("Telegram_username", ""),
-                        passenger.get("FIO", "")
-                    ])
-
-        # Сохраняем в байтовый поток
-        await message.edit_text("💾 Сохраняем файл...")
-        bio = BytesIO()
-        await asyncio.to_thread(wb.save, bio)
-        bio.seek(0)
-
-        # Отправляем файл
-        await message.edit_text("📤 Отправляем файл...")
-        await context.bot.send_document(
-            chat_id=update.effective_chat.id,
-            document=("buses_passengers.xlsx", bio),
-            caption="Выгрузка данных по автобусам завершена"
-        )
+        # Создаем временный файл вместо BytesIO
+        temp_file = "temp_export.xlsx"
         
-        # Удаляем сообщение о прогрессе
-        await message.delete()
+        try:
+            # Создаем Excel-файл
+            def generate_excel():
+                wb = openpyxl.Workbook()
+                wb.remove(wb.active)  # Удаляем дефолтный лист
+
+                # Группируем пассажиров по автобусам
+                bus_passengers = {}
+                for res in reservations:
+                    bus_id = str(res["Bus"])
+                    passenger = next((p for p in passengers if str(p["ID"]) == str(res["Passenger"])), None)
+                    if passenger:
+                        if bus_id not in bus_passengers:
+                            bus_passengers[bus_id] = []
+                        bus_passengers[bus_id].append(passenger)
+
+                # Создаем листы
+                for bus in buses:
+                    bus_id = str(bus["ID"])
+                    sheet_name = f"Автобус {bus['Number']}"[:31]  # Ограничение длины имени листа
+                    ws = wb.create_sheet(title=sheet_name)
+                    ws.append(["№", "ФИО", "Username"])
+                    
+                    for idx, passenger in enumerate(bus_passengers.get(bus_id, []), start=1):
+                        ws.append([
+                            idx,
+                            passenger.get("ФИО", ""),
+                            passenger.get("Telegram_username", ""),
+                        ])
+
+                wb.save(temp_file)
+
+            await asyncio.to_thread(generate_excel)
+            await msg.edit_text("📤 Отправляем файл...")
+
+            # Отправка файла
+            with open(temp_file, "rb") as file:
+                await context.bot.send_document(
+                    chat_id=update.effective_chat.id,
+                    document=file,
+                    filename=f"bus_report_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
+                    caption="✅ Отчет по автобусам"
+                )
+            
+            await msg.delete()
+
+        finally:
+            # Удаляем временный файл
+            if os.path.exists(temp_file):
+                os.remove(temp_file)
 
     except Exception as e:
-        error_msg = f"⚠️ Произошла ошибка при выгрузке: {str(e)}"
-        await message.edit_text(error_msg)
-        print(error_msg)
+        error_msg = f"❌ Ошибка при выгрузке: {str(e)}"
+        if update.callback_query:
+            await update.callback_query.edit_message_text(error_msg)
+        else:
+            await update.message.reply_text(error_msg)
 
 
 async def step_select_direction(query, context):
