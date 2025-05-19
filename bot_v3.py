@@ -1,6 +1,7 @@
 import os
 import json
 import asyncio
+from io import BytesIO
 
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
@@ -101,7 +102,17 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         [InlineKeyboardButton("Как добраться?", callback_data="how_to_get_there")],
         [InlineKeyboardButton("FAQ", callback_data="render_faq")],
     ]
+     # Добавляем кнопку выгрузки только для maximovd
+    username = None
+    if update.message:
+        username = update.message.from_user.username
+    elif update.callback_query:
+        username = update.callback_query.from_user.username
+
+    if username and username.lower() == "maximovd":
+        keyboard.append([InlineKeyboardButton("Выгрузить данные", callback_data="export_buses")])
     reply_markup = InlineKeyboardMarkup(keyboard)
+
     if update.message:
         await update.message.reply_text(welcome_message, reply_markup=reply_markup)
     else:
@@ -110,7 +121,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
     await query.answer()
-
     if query.data == "book_bus":
         await step_select_direction(query, context)
     elif query.data == "view_booking":
@@ -140,6 +150,111 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await render_faq(update, context)
     elif query.data == "back_to_menu":
         await start(update, context)
+    elif query.data == "export_buses":
+        await export_buses(update, context)
+
+        
+async def export_buses(update, context):
+    """Асинхронно создает XLSX файл с пассажирами по автобусам и показывает прогресс"""
+    query = update.callback_query
+    import pdb; pdb.set_trace()
+    if query:
+        await query.answer()
+        message = await query.edit_message_text("Начинаем выгрузку данных...")
+    else:
+        message = await update.message.reply_text("Начинаем выгрузку данных...")
+
+    try:
+        # Получаем данные асинхронно
+        await message.edit_text("🔄 Получаем данные об автобусах...")
+        buses = await asyncio.to_thread(buses_sheet.get_all_records)
+        
+        await message.edit_text("🔄 Получаем данные о бронированиях...")
+        reservations = await asyncio.to_thread(reservations_sheet.get_all_records)
+        
+        await message.edit_text("🔄 Получаем данные о пассажирах...")
+        passengers = await asyncio.to_thread(passengers_sheet.get_all_records)
+
+        # Создаем книгу
+        await message.edit_text("📊 Создаем файл...")
+        wb = Workbook()
+        if "Sheet" in wb.sheetnames:
+            wb.remove(wb["Sheet"])
+
+        # Группируем брони по автобусам
+        reservations_by_bus = {}
+        for r in reservations:
+            bus_id = r["Bus"]
+            if bus_id not in reservations_by_bus:
+                reservations_by_bus[bus_id] = []
+            reservations_by_bus[bus_id].append(r)
+
+        total_buses = len(buses)
+        processed = 0
+
+        # Обрабатываем каждый автобус
+        for bus in buses:
+            processed += 1
+            progress = int(processed / total_buses * 100)
+            bus_id_str = str(bus["ID"])
+            
+            await message.edit_text(
+                f"📝 Обрабатываем автобусы... ({progress}%)\n"
+                f"Автобус {bus['Number']} ({bus['Direction']})"
+            )
+
+            # Получаем пассажиров для этого автобуса
+            bus_reservations = reservations_by_bus.get(bus_id_str, [])
+            passenger_names = []
+
+            for res in bus_reservations:
+                passenger_id = res["Passenger"]
+                passenger = next((p for p in passengers if p["ID"] == str(passenger_id)), None)
+                if passenger:
+                    username = passenger.get("Telegram_username", "")
+                    fio = passenger.get("FIO", "")
+                    name_display = username or fio or "Без имени"
+                    passenger_names.append(name_display)
+
+            # Создаем лист для автобуса
+            sheet_name = f"Bus_{bus['Number']}"[:31]  # Ограничение длины имени листа
+            ws = wb.create_sheet(title=sheet_name)
+            
+            # Заполняем данные
+            ws.append(["№", "Пассажир", "Телеграм", "ФИО"])
+            for idx, name in enumerate(passenger_names, start=1):
+                passenger_id = bus_reservations[idx-1]["Passenger"]
+                passenger = next((p for p in passengers if p["ID"] == str(passenger_id)), None)
+                if passenger:
+                    ws.append([
+                        idx,
+                        name,
+                        passenger.get("Telegram_username", ""),
+                        passenger.get("FIO", "")
+                    ])
+
+        # Сохраняем в байтовый поток
+        await message.edit_text("💾 Сохраняем файл...")
+        bio = BytesIO()
+        await asyncio.to_thread(wb.save, bio)
+        bio.seek(0)
+
+        # Отправляем файл
+        await message.edit_text("📤 Отправляем файл...")
+        await context.bot.send_document(
+            chat_id=update.effective_chat.id,
+            document=("buses_passengers.xlsx", bio),
+            caption="Выгрузка данных по автобусам завершена"
+        )
+        
+        # Удаляем сообщение о прогрессе
+        await message.delete()
+
+    except Exception as e:
+        error_msg = f"⚠️ Произошла ошибка при выгрузке: {str(e)}"
+        await message.edit_text(error_msg)
+        print(error_msg)
+
 
 async def step_select_direction(query, context):
     buses = buses_sheet.get_all_records()
@@ -661,6 +776,7 @@ async def add_user_to_waiting_list_callback(update, context):
 
 async def handle_select_waiting_bus(update, context):
     query = update.callback_query
+
     if query.data.startswith("set_waiting_bus_"):
         bus_id = query.data.split("_", 3)[3]
         user = query.from_user
