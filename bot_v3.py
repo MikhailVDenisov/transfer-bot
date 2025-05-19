@@ -157,7 +157,6 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def export_buses(update, context):
     """Асинхронно создает XLSX файл с пассажирами по автобусам и показывает прогресс"""
     query = update.callback_query
-    import pdb; pdb.set_trace()
     if query:
         await query.answer()
         message = await query.edit_message_text("Начинаем выгрузку данных...")
@@ -824,7 +823,6 @@ async def periodic(application):
         try:
             await process_waiting_list(application)
         except Exception as e:
-            import pdb; pdb.set_trace()
             print(f"Ошибка: {e}")
         await asyncio.sleep(300)  # TODO: Вынести это в переменную окружения
 
