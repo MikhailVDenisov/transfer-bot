@@ -57,6 +57,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 current_value = passengers_sheet.cell(cell.row, chatid_col_idx).value
                 if not current_value and chat_id:
                     passengers_sheet.update_cell(cell.row, chatid_col_idx, str(chat_id))
+            
+            # Проверяем роль пользователя
+            is_admin = False
+            if "Role" in headers:
+                role_col_idx = headers.index("Role") + 1
+                role = passengers_sheet.cell(cell.row, role_col_idx).value
+                is_admin = role and role.lower() == "admin"
         except:
             # Пользователь не найден, создаем новую запись
             headers = passengers_sheet.row_values(1)
@@ -85,7 +92,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                     else:
                         new_row.append("")
                 passengers_sheet.append_row(new_row)
-            # Если поля "ID" нет, ничего не делаем
+            is_admin = False
+
     # Остальной код стартового сообщения
     welcome_message = (
         "Привет! Я трансфер-бот!\n\n"
@@ -103,15 +111,21 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         [InlineKeyboardButton("Как добраться?", callback_data="how_to_get_there")],
         [InlineKeyboardButton("FAQ", callback_data="render_faq")],
     ]
-     # Добавляем кнопку выгрузки только для maximovd
-    username = None
-    if update.message:
-        username = update.message.from_user.username
-    elif update.callback_query:
-        username = update.callback_query.from_user.username
+    
+    # Добавляем кнопку выгрузки только для администраторов
+    if username:
+        try:
+            # Получаем запись пользователя
+            cell = passengers_sheet.find(username)
+            headers = passengers_sheet.row_values(1)
+            if "Role" in headers:
+                role_col_idx = headers.index("Role") + 1
+                role = passengers_sheet.cell(cell.row, role_col_idx).value
+                if role and role.lower() == "admin":
+                    keyboard.append([InlineKeyboardButton("Выгрузить данные", callback_data="export_buses")])
+        except:
+            pass
 
-    if username and username.lower() == "maximovd":
-        keyboard.append([InlineKeyboardButton("Выгрузить данные", callback_data="export_buses")])
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     if update.message:
@@ -160,12 +174,23 @@ async def export_buses(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     import openpyxl
     """Асинхронная выгрузка данных в Excel с обработкой всех ошибок"""
     try:
-        # Проверка прав доступа
+        # Проверка прав доступа (теперь по роли admin)
         user = update.effective_user
-        if not user or user.username.lower() != "maximovd":
+        if not user:
             if update.callback_query:
                 await update.callback_query.answer("⚠️ Доступ запрещен", show_alert=True)
             return
+            
+        # Получаем данные о пользователе из таблицы Passengers
+        try:
+            passengers = await asyncio.to_thread(passengers_sheet.get_all_records)
+            user_record = next((p for p in passengers if p.get("Telegram_username", "") == user.username), None)
+            if not user_record or user_record.get("Role", "").lower() != "admin":
+                if update.callback_query:
+                    await update.callback_query.answer("⚠️ Доступ запрещен", show_alert=True)
+                return
+        except Exception as e:
+            raise Exception(f"Ошибка проверки прав доступа: {str(e)}")
 
         # Уведомление о начале процесса
         if update.callback_query:
@@ -176,15 +201,16 @@ async def export_buses(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
         # Асинхронное получение данных
         try:
-            buses, reservations, passengers = await asyncio.gather(
+            buses, reservations, passengers, bus_owners = await asyncio.gather(
                 asyncio.to_thread(buses_sheet.get_all_records),
                 asyncio.to_thread(reservations_sheet.get_all_records),
-                asyncio.to_thread(passengers_sheet.get_all_records)
+                asyncio.to_thread(passengers_sheet.get_all_records),
+                asyncio.to_thread(spreadsheet.worksheet("BusOwners").get_all_records)
             )
         except Exception as e:
             raise Exception(f"Ошибка получения данных из Google Sheets: {str(e)}")
 
-        # Создаем временный файл вместо BytesIO
+        # Создаем временный файл
         temp_file = "temp_export.xlsx"
         
         try:
@@ -203,18 +229,52 @@ async def export_buses(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
                             bus_passengers[bus_id] = []
                         bus_passengers[bus_id].append(passenger)
 
-                # Создаем листы
+                # Создаем листы для каждого автобуса
                 for bus in buses:
                     bus_id = str(bus["ID"])
                     sheet_name = f"Автобус {bus['Number']}"[:31]  # Ограничение длины имени листа
                     ws = wb.create_sheet(title=sheet_name)
-                    ws.append(["№", "ФИО", "Username"])
                     
+                    # Добавляем заголовок с информацией об автобусе
+                    bus_info = [
+                        f"Автобус: {bus.get('Number', '')}",
+                        f"Маршрут: {bus.get('Departure_Place', '')} - {bus.get('Destination', '')}",
+                        f"Направление: {bus.get('Direction'), ''}",
+                        f"Дата/время: {bus.get('DepartureDate', '')} {bus.get('DepartureTime', '')}",
+                        f"Вместимость: {bus.get('Capacity', '')}",
+                    ]
+                    
+                    # Находим ответственных за автобус
+                    owners = [o for o in bus_owners if str(o.get("BusID")) == bus_id]
+                    responsible_persons = []
+                    for owner in owners:
+                        chief = next((p for p in passengers if str(p["ID"]) == str(owner.get("ChiefID"))), None)
+                        if chief:
+                            responsible_persons.append(
+                                f"{chief.get('ФИО', '')} (@{chief.get('Telegram_username', '')})"
+                            )
+                    
+                    if responsible_persons:
+                        bus_info.append(f"Ответственные: {', '.join(responsible_persons)}")
+                    
+                    # Записываем информацию об автобусе
+                    for line in bus_info:
+                        ws.append([line])
+                    
+                    # Пустая строка для разделения
+                    ws.append([])
+                    
+                    # Заголовки таблицы пассажиров
+                    ws.append(["№", "ФИО", "Username", "Телефон", "Комментарий"])
+                    
+                    # Данные пассажиров
                     for idx, passenger in enumerate(bus_passengers.get(bus_id, []), start=1):
                         ws.append([
                             idx,
                             passenger.get("ФИО", ""),
-                            passenger.get("Telegram_username", ""),
+                            f"@{passenger.get('Telegram_username', '')}",
+                            passenger.get("Phone", ""),
+                            passenger.get("Comment", "")
                         ])
 
                 wb.save(temp_file)
@@ -233,6 +293,10 @@ async def export_buses(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             
             await msg.delete()
 
+        except Exception as e:
+            error_msg = f"❌ Ошибка при генерации отчета: {str(e)}"
+            await msg.edit_text(error_msg)
+            return
         finally:
             # Удаляем временный файл
             if os.path.exists(temp_file):
