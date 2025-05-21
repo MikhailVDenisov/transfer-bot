@@ -435,10 +435,16 @@ async def view_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     username = query.from_user.username
     passengers = passengers_sheet.get_all_records()
     passenger = next((p for p in passengers if p["Telegram_username"] == username), None)
+    query = update.callback_query
+    keyboard = [
+        [InlineKeyboardButton("Назад", callback_data="back_to_menu")],
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
     if not passenger:
         await query.edit_message_text(
             "К сожалению, я не вижу тебя в списках участиников кэмпа, "
-            "для решение данного вопроса, обратись к своему старшему, либо напиши: @maximovd"
+            "для решение данного вопроса, обратись к своему старшему, либо напиши: @maximovd",
+            reply_markup=reply_markup,
         )
         return
 
@@ -447,7 +453,7 @@ async def view_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user_res = [r for r in reservations if r["Passenger"] == passenger["ID"]]
     if not user_res:
-        await query.edit_message_text("Вы не записаны ни на один автобус")
+        await query.edit_message_text("Вы не записаны ни на один автобус", reply_markup=reply_markup)
         return
 
     message = "Ваши записи:\n\n"
@@ -460,6 +466,8 @@ async def view_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"({bus['Departure_Place']}-{bus['Destination']})-{bus['Direction']}\n"
             )
             keyboard.append([InlineKeyboardButton(f"Отменить бронь: Автобус: {bus['Number']}-{bus['Direction']}", callback_data=f"cancel_reservation_{res['ID']}")])
+    
+    keyboard.append([InlineKeyboardButton("Назад", callback_data="back_to_menu")])
 
     reply_markup = InlineKeyboardMarkup(keyboard)
     await query.edit_message_text(message, reply_markup=reply_markup)
@@ -469,10 +477,16 @@ async def cancel_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     username = query.from_user.username
     passengers = passengers_sheet.get_all_records()
     passenger = next((p for p in passengers if p["Telegram_username"] == username), None)
+    query = update.callback_query
+    keyboard = [
+        [InlineKeyboardButton("Назад", callback_data="back_to_menu")],
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
     if not passenger:
         await query.edit_message_text(
             "К сожалению, я не вижу тебя в списках участиников кэмпа, "
-            "для решение данного вопроса, обратись к своему старшему, либо напиши: @maximovd"
+            "для решение данного вопроса, обратись к своему старшему, либо напиши: @maximovd",
+            reply_markup=reply_markup,
         )
         return
 
@@ -481,7 +495,7 @@ async def cancel_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user_res = [r for r in reservations if r["Passenger"] == passenger["ID"]]
     if not user_res:
-        await query.edit_message_text("У вас нет записей для отмены")
+        await query.edit_message_text("У вас нет записей для отмены", reply_markup=reply_markup)
         return
 
     keyboard = []
@@ -508,24 +522,29 @@ async def delete_reservation(update, context, reservation_id):
     """Удаление записи"""
     query = update.callback_query
     username = query.from_user.username
+    query = update.callback_query
+    keyboard = [
+        [InlineKeyboardButton("Назад", callback_data="back_to_menu")],
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
 
     reservations = reservations_sheet.get_all_records()
     reservation = next((r for r in reservations if str(r["ID"]) == str(reservation_id)), None)
 
     if not reservation:
-        await query.edit_message_text("Запись не найдена.")
+        await query.edit_message_text("Запись не найдена.", reply_markup=reply_markup)
         return
 
     passengers = passengers_sheet.get_all_records()
     passenger = next((p for p in passengers if p["Telegram_username"] == username), None)
 
     if not passenger or str(reservation["Passenger"]) != str(passenger["ID"]):
-        await query.edit_message_text("Ошибка: эта запись вам не принадлежит.")
+        await query.edit_message_text("Ошибка: эта запись вам не принадлежит.", reply_markup=reply_markup)
         return
 
     cell = reservations_sheet.find(str(reservation_id))
     reservations_sheet.delete_rows(cell.row)
-    await query.edit_message_text("Ваша запись отменена.")
+    await query.edit_message_text("Ваша запись отменена.", reply_markup=reply_markup)
 
 async def show_how_to_get_there(update: Update, context: ContextTypes.DEFAULT_TYPE):
     info_message = (
@@ -537,13 +556,13 @@ async def show_how_to_get_there(update: Update, context: ContextTypes.DEFAULT_TY
         "от Курского или Белорусского вокзала до станции Купавна (цена билета ~150 руб), \n"
         "затем 20-30 мин на такси (~650 руб.) до отеля Ареал\n"
         "или автобусе 37щ до ост. Улица Орлова, 26 и пешком/на такси (~350 руб.) до отеля 3 км.\n\n"
-        "Расписание электричек*: [туда](https://ticket.rzd.ru/searchresults/v/1/5a323c29340c7441a0a556bb/5cd18d837081a600437b02f2/) и [обратно](https://ticket.rzd.ru/searchresults/v/1/5cd18d837081a600437b02f2/5a323c29340c7441a0a556bb/) (пожалуйста, внимательно проверяйте станцию отправления и прибытия в Москве, расписание указано для двух вокзалов).\n\n"
+        "**Расписание электричек**: [туда](https://ticket.rzd.ru/searchresults/v/1/5a323c29340c7441a0a556bb/5cd18d837081a600437b02f2/) и [обратно](https://ticket.rzd.ru/searchresults/v/1/5cd18d837081a600437b02f2/5a323c29340c7441a0a556bb/) пожалуйста, внимательно проверяйте станцию отправления и прибытия в Москве, расписание указано для двух вокзалов.\n\n"
         "На автобусе (время в пути ~1,5 часа)\n"
-        "от ст. м. Партизанская/МЦК Измайлово (1 выход из метро) - автобусы [№322](https://t/$', '') или [№399](https://t.$') или [№444](https://t.$')\n"
-        "от м. Новогиреево маршрутное такси [№1209к](https://t.$'), [№587к](https://t.$') или [№886к](https://t.$') (6 выход из метро); \n"
+        "от ст. м. Партизанская/МЦК Измайлово (1 выход из метро) - автобусы №322 или №399 или №444\n"
+        "от м. Новогиреево маршрутное такси №1209к, №587к или №886к (6 выход из метро); \n"
         "до ост. Новая Купавна, перейти Горьковское шоссе, \n"
         "далее на такси 5-7 мин (~250 руб.) или пешком около 2,3 км по указателям (для спортивных участников).\n\n"
-        "Расписание автобусов*: [туда](https://rasp.yandex.ru/search/bus/?fromId=c213&fromName=%D0%9C%D0%BE%D1%81%D0%BA%D0%B2%D0%B0&toId=c33762&toName=%D0%9D%D0%BE%D0%B2%D0%B0%D1%8F+%D0%9A%D1%83%D0%BF%D0%B0%D0%B2%D0%BD%D0%B0&when=23+%D0%BC%D0%B0%D1%8F)/[обратно](https://rasp.yandex.ru/search/bus/?fromId=c33762&fromName=%D0%9D%D0%BE%D0%B2%D0%B0%D1%8F+%D0%9A%D1%83%D0%BF%D0%B0%D0%B2%D0%BD%D0%B0&toId=c213&toName=%D0%9C%D0%BE%D1%81%D0%BA%D0%B2%D0%B0&when=25+%D0%BC%D0%B0%D1%8F) (пожалуйста, внимательно проверяйте даты отправления и прибытия, данные актуальны для пятницы 23 мая и воскресенья 25 мая соответственно).\n\n"
+        "**Расписание автобусов**: [туда](https://rasp.yandex.ru/search/bus/?fromId=c213&fromName=%D0%9C%D0%BE%D1%81%D0%BA%D0%B2%D0%B0&toId=c33762&toName=%D0%9D%D0%BE%D0%B2%D0%B0%D1%8F+%D0%9A%D1%83%D0%BF%D0%B0%D0%B2%D0%BD%D0%B0&when=23+%D0%BC%D0%B0%D1%8F) и [обратно](https://rasp.yandex.ru/search/bus/?fromId=c33762&fromName=%D0%9D%D0%BE%D0%B2%D0%B0%D1%8F+%D0%9A%D1%83%D0%BF%D0%B0%D0%B2%D0%BD%D0%B0&toId=c213&toName=%D0%9C%D0%BE%D1%81%D0%BA%D0%B2%D0%B0&when=25+%D0%BC%D0%B0%D1%8F) пожалуйста, внимательно проверяйте даты отправления и прибытия, данные актуальны для пятницы 23 мая и воскресенья 25 мая соответственно.\n\n"
         "На машине (время в пути ~1 час)\n"
         "на территории отеля есть бесплатная парковка на 190 мест, находится перед въездом в отель (пропуск не требуется). Подъезд со стороны Горьковского шоссе. \n"
         "Если есть свободные места и вы можете взять попутчиков, укажите это в чате: https://t.me/c/123456789/101112, начните знакомство еще до кэмпа!😉\n\n"
@@ -551,12 +570,12 @@ async def show_how_to_get_there(update: Update, context: ContextTypes.DEFAULT_TY
         "Шереметьево (~2,5 часа)\n"
         "[Аэроэкспрессе](https://aeroexpress.ru/)(~650 руб.) до Окружной, пересесть на МЦК до ст. Измайловская;\n"
         "или [Экспресс автобус](https://aeroexpress.ru/) (~400 руб.) до Ховрино, затем на МЦК до ст. Партизанская.\n"
-        "далее на автобусе [№322](https://t.$'), [№399](https://t.$') или [№444](https://t.$') до ост. Новая Купавна, далее на такси (~250 руб.) или пешком около 2,3 км.\n"
+        "далее на автобусе №322, №399 или №444 до ост. Новая Купавна, далее на такси (~250 руб.) или пешком около 2,3 км.\n"
         "Внуково (~2,5 часа)\n"
-        "на метро от ст. Аэропорт Внуково до ст. Партизанская, далее на автобусе [№322](https://t.$'), [№399](https://t.$') или [№444](https://t.$') до ост. Новая Купавна, далее на такси (~250 руб.) или пешком 2,3 км.\n"
+        "на метро от ст. Аэропорт Внуково до ст. Партизанская, далее на автобусе №322, №399 или №444 до ост. Новая Купавна, далее на такси (~250 руб.) или пешком 2,3 км.\n"
         "Домодедово (~2,5 часа)\n"
         "на [Аэроэкспрессе](https://aeroexpress.ru/) (~650 руб.) до Верхних Котлов, пересесть на МЦК до ст. Измайловская, далее на автобусе (№322, 399 или №444) до ост. Новая Купавна, затем на такси (~250 руб.) или пешком 2,3 км.\n"
-        "❗️ Учитывайте, что в пятницу вечером и субботу утром трассы могут быть пробки, а в воскресенье вечером - обратный маршрут❗️"
+        "❗️ Учитывайте, пожалуйста, что в пятницу вечером и субботу утром на данном направлении могут быть пробки из Москвы, а в воскресенье вечером - в Москву, что может вызвать задержки в пути❗️"
     )
     query = update.callback_query
     keyboard = [
@@ -592,7 +611,11 @@ async def render_faq(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Пользуйся ботом, экономь своё время и не забудь забронировать место заранее! Если будут вопросы — мы будем в общем чате ProductCamp во вкладке «Трансфер» 😊\n"
     )
     query = update.callback_query
-    await query.edit_message_text(faq_text, parse_mode="Markdown")
+    keyboard = [
+        [InlineKeyboardButton("Назад", callback_data="back_to_menu")],
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await query.edit_message_text(faq_text, parse_mode="Markdown", reply_markup=reply_markup)
 
 async def show_how_route_to_hotel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     image_url = "https://lh7-rt.googleusercontent.com/docsz/AD_4nXeTgIHj8xL5841KSiK2TweN4zWuVuVyl9kEzjhLycPcNMlVY3Q2K4ArRzdy1ZpGIXbS6-hYWmNEpYq4h6B2py8EmfDX1w3K225docCZAXI3Esh6iKHBPKhad-QUSq1ND68n4HhE0w?key=pfElDP_kPhatX9dfoNbfQj_I"
@@ -628,11 +651,17 @@ async def confirm_booking(update, context, bus_id):
     
     passengers = passengers_sheet.get_all_records()
     passenger = next((p for p in passengers if p["Telegram_username"] == username), None)
+    query = update.callback_query
+    keyboard = [
+        [InlineKeyboardButton("Назад", callback_data="back_to_menu")],
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
 
     if not passenger:
         await query.edit_message_text(
             "К сожалению, я не вижу тебя в списках участиников кэмпа, "
-            "для решение данного вопроса, обратись к своему старшему, либо напиши: @maximovd"
+            "для решение данного вопроса, обратись к своему старшему, либо напиши: @maximovd",
+            reply_markup=reply_markup,
         )
         return
 
@@ -660,7 +689,7 @@ async def confirm_booking(update, context, bus_id):
     # Проверка, заняты ли все места
     bus_reservations = [r for r in reservations if int(r["Bus"]) == int(bus_id)]
     if len(bus_reservations) >= capacity:
-        await query.edit_message_text("Все места в автобусе уже заняты.")
+        await query.edit_message_text("Все места в автобусе уже заняты.", reply_markup=reply_markup)
         return
 
     # Проверка, есть ли регистрация на этот автобус и направление
@@ -690,7 +719,8 @@ async def confirm_booking(update, context, bus_id):
     await query.edit_message_text(
         f"Вы успешно записаны на автобус: {bus['Number']} "
         f"({bus['DepartureDate']} {bus['DepartureTime']}) "
-        f"{bus['Departure_Place']}-{bus['Destination']}"
+        f"{bus['Departure_Place']}-{bus['Destination']}",
+        reply_markup=reply_markup,
     )
 
     waiting_records = wating_list_sheet.get_all_records()
@@ -835,10 +865,6 @@ async def process_waiting_list(application: Application, single_notification: bo
                     
                     # Логируем успешную отправку
                     logging.info(f"Уведомление отправлено пассажиру {passenger_id} для автобуса {bus_id}")
-                    
-                    # Если отправляем только одно уведомление - прерываем цикл
-                    if single_notification:
-                        break
                         
                 except Exception as e:
                     logging.error(f"Ошибка отправки уведомления пассажиру {passenger_id}: {str(e)}")
@@ -961,7 +987,7 @@ async def periodic(application):
             await process_waiting_list(application)
         except Exception as e:
             print(f"Ошибка: {e}")
-        await asyncio.sleep(300)  # TODO: Вынести это в переменную окружения
+        await asyncio.sleep(600)  # TODO: Вынести это в переменную окружения
 
 
 def main():
