@@ -748,7 +748,7 @@ async def confirm_booking(update, context, bus_id):
 
 async def process_waiting_list(application: Application, single_notification: bool = True):
     """Автоматическая проверка и оповещение о свободных местах с учетом статусов.
-    Если single_notification=True, отправляет уведомление только самому раннему ожидающему."""
+    Если single_notification=True, отправляет уведомление только самому раннему ожидающему на каждом автобусе."""
     try:
         # Получаем все необходимые данные
         ws = spreadsheet.worksheet("WaitingList")
@@ -774,100 +774,91 @@ async def process_waiting_list(application: Application, single_notification: bo
         # Текущее время для проверки 2-х суток
         current_time = datetime.now()
 
-        # Если нужно отправить только одно уведомление самому раннему ожидающему
-        if single_notification:
-            eligible_records = []
-            
-            for wait in waiting_records:
-                if (wait.get("Status") == "Waiting" and 
-                    wait.get("NotificationSent") == "No" and 
-                    wait.get("RequestTime")):
-                    
-                    try:
-                        request_time = datetime.strptime(wait["RequestTime"], "%Y-%m-%d %H:%M:%S")
-                        eligible_records.append((request_time, wait))
-                    except (ValueError, TypeError):
-                        continue
-            
-            if eligible_records:
-                # Находим запись с самым ранним временем
-                eligible_records.sort(key=lambda x: x[0])
-                earliest_record = eligible_records[0][1]
-                waiting_records = [earliest_record]  # Обрабатываем только эту запись
-            else:
-                return  # Нет подходящих записей для уведомления
-
+        # Группируем ожидающих по автобусам
+        bus_waiting_groups = {}
         for wait in waiting_records:
-            # Пропускаем записи не в статусе Waiting (для общего случая)
-            if wait.get("Status") != "Waiting":
-                continue
+            if (wait.get("Status") == "Waiting" and 
+                wait.get("NotificationSent") == "No" and 
+                wait.get("RequestTime")):
+                
+                try:
+                    bus_id = wait.get("BusID")
+                    if bus_id not in bus_waiting_groups:
+                        bus_waiting_groups[bus_id] = []
+                    
+                    request_time = datetime.strptime(wait["RequestTime"], "%Y-%m-%d %H:%M:%S")
+                    bus_waiting_groups[bus_id].append((request_time, wait))
+                except (ValueError, TypeError):
+                    continue
 
-            bus_id = wait.get("BusID")
-            passenger_id = wait.get("PassengerID")
-            
-            # Проверка на существование автобуса
+        # Для каждого автобуса с ожидающими и свободными местами
+        for bus_id, waiting_list in bus_waiting_groups.items():
+            # Пропускаем если автобус не существует или нет свободных мест
             if bus_id not in bus_capacity:
                 continue
-
-            # Проверка времени для сброса NotificationSent
-            request_time_str = wait.get("RequestTime")
-            if request_time_str:
-                try:
-                    request_time = datetime.strptime(request_time_str, "%Y-%m-%d %H:%M:%S")
-                    time_diff = current_time - request_time
-                    
-                    # Если прошло более 2 суток и статус Waiting
-                    if time_diff.total_seconds() > 172800 and wait.get("NotificationSent") == "Yes":
-                        # Находим и обновляем запись
-                        cell = ws.find(str(wait["ID"]))
-                        ws.update_cell(cell.row, ws.find("NotificationSent").col, "No")
-                        continue
-                except (ValueError, TypeError):
-                    pass
-
-            # Пропускаем если уведомление уже отправлено (для общего случая)
-            if wait.get("NotificationSent") == "Yes" and not single_notification:
-                continue
-
-            # Проверяем наличие свободных мест
+                
             free_places = bus_capacity[bus_id] - bus_reserved_counts.get(bus_id, 0)
             if free_places <= 0:
                 continue
 
-            # Находим пассажира и автобус
-            passenger = next((p for p in passengers if str(p["ID"]) == str(passenger_id)), None)
-            bus = next((b for b in buses if str(b["ID"]) == str(bus_id)), None)
+            # Если нужно отправить только одно уведомление - берем самого раннего
+            if single_notification and waiting_list:
+                waiting_list.sort(key=lambda x: x[0])
+                waiting_list = [waiting_list[0]]
 
-            if passenger and bus and passenger.get("ChatID"):
-                # Создаем клавиатуру для подтверждения
-                keyboard = [
-                    [InlineKeyboardButton(
-                        "Подтвердить бронь",
-                        callback_data=f"select_bus_{bus_id}"
-                    )]
-                ]
-                reply_markup = InlineKeyboardMarkup(keyboard)
+            for _, wait in waiting_list:
+                passenger_id = wait.get("PassengerID")
                 
-                # Отправляем уведомление
-                try:
-                    await application.bot.send_message(
-                        chat_id=passenger["ChatID"],
-                        text=f"🚌 Место на автобус {bus['Number']} ({bus['DepartureDate']} {bus['DepartureTime']}) теперь доступно!\n"
-                             "❗У вас есть 10 минут, чтобы подтвердить бронь, после бот отправит пуш следующему в листе ожидания. \n"
-                             "Нажмите кнопку ниже чтобы подтвердить бронь:",
-                        reply_markup=reply_markup
-                    )
-                    
-                    # Обновляем статус NotificationSent
-                    cell = ws.find(str(wait["ID"]))
-                    notification_col = ws.find("NotificationSent").col
-                    ws.update_cell(cell.row, notification_col, "Yes")
-                    
-                    # Логируем успешную отправку
-                    logging.info(f"Уведомление отправлено пассажиру {passenger_id} для автобуса {bus_id}")
+                # Проверка времени для сброса NotificationSent
+                request_time_str = wait.get("RequestTime")
+                if request_time_str:
+                    try:
+                        request_time = datetime.strptime(request_time_str, "%Y-%m-%d %H:%M:%S")
+                        time_diff = current_time - request_time
                         
-                except Exception as e:
-                    logging.error(f"Ошибка отправки уведомления пассажиру {passenger_id}: {str(e)}")
+                        # Если прошло более 2 суток и статус Waiting
+                        if time_diff.total_seconds() > 172800 and wait.get("NotificationSent") == "Yes":
+                            # Находим и обновляем запись
+                            cell = ws.find(str(wait["ID"]))
+                            ws.update_cell(cell.row, ws.find("NotificationSent").col, "No")
+                            continue
+                    except (ValueError, TypeError):
+                        pass
+
+                # Находим пассажира и автобус
+                passenger = next((p for p in passengers if str(p["ID"]) == str(passenger_id)), None)
+                bus = next((b for b in buses if str(b["ID"]) == str(bus_id)), None)
+
+                if passenger and bus and passenger.get("ChatID"):
+                    # Создаем клавиатуру для подтверждения
+                    keyboard = [
+                        [InlineKeyboardButton(
+                            "Подтвердить бронь",
+                            callback_data=f"select_bus_{bus_id}"
+                        )]
+                    ]
+                    reply_markup = InlineKeyboardMarkup(keyboard)
+                    
+                    # Отправляем уведомление
+                    try:
+                        await application.bot.send_message(
+                            chat_id=passenger["ChatID"],
+                            text=f"🚌 Место на автобус {bus['Number']} ({bus['DepartureDate']} {bus['DepartureTime']}) теперь доступно!\n"
+                                 "❗У вас есть 10 минут, чтобы подтвердить бронь, после бот отправит пуш следующему в листе ожидания. \n"
+                                 "Нажмите кнопку ниже чтобы подтвердить бронь:",
+                            reply_markup=reply_markup
+                        )
+                        
+                        # Обновляем статус NotificationSent
+                        cell = ws.find(str(wait["ID"]))
+                        notification_col = ws.find("NotificationSent").col
+                        ws.update_cell(cell.row, notification_col, "Yes")
+                        
+                        # Логируем успешную отправку
+                        logging.info(f"Уведомление отправлено пассажиру {passenger_id} для автобуса {bus_id}")
+                            
+                    except Exception as e:
+                        logging.error(f"Ошибка отправки уведомления пассажиру {passenger_id}: {str(e)}")
 
     except Exception as e:
         logging.error(f"Ошибка в process_waiting_list: {str(e)}")
