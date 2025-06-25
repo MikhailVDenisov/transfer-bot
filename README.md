@@ -45,7 +45,7 @@ GOOGLE_CREDENTIALS_JSON={"type": "service_account", ...}
    - Создайте таблицу с листами: `Passengers`, `Buses`, `Reservations`, `WaitingList`, `BusOwners`
    - Предоставьте доступ для service account из credentials
 
-## Структура проекта
+## Структура проекта (TOBE)
 
 ```
 productcamp-transfer-bot/
@@ -136,5 +136,3 @@ def setup_handlers(application):
 ## Лицензия
 
 MIT License
-
-
