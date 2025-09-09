@@ -57,7 +57,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 current_value = passengers_sheet.cell(cell.row, chatid_col_idx).value
                 if not current_value and chat_id:
                     passengers_sheet.update_cell(cell.row, chatid_col_idx, str(chat_id))
-            
+
             # Проверяем роль пользователя
             is_admin = False
             if "Role" in headers:
@@ -111,7 +111,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         [InlineKeyboardButton("Как добраться?", callback_data="how_to_get_there")],
         [InlineKeyboardButton("FAQ", callback_data="render_faq")],
     ]
-    
+
     # Добавляем кнопку выгрузки только для администраторов
     if username:
         try:
@@ -169,7 +169,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     elif query.data == "back_to_menu":
         await start(update, context)
 
-        
+
 async def export_buses(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     import openpyxl
     """Асинхронная выгрузка данных в Excel с обработкой всех ошибок"""
@@ -180,7 +180,7 @@ async def export_buses(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             if update.callback_query:
                 await update.callback_query.answer("⚠️ Доступ запрещен", show_alert=True)
             return
-            
+
         # Получаем данные о пользователе из таблицы Passengers
         try:
             passengers = await asyncio.to_thread(passengers_sheet.get_all_records)
@@ -212,7 +212,7 @@ async def export_buses(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
         # Создаем временный файл
         temp_file = "temp_export.xlsx"
-        
+
         try:
             # Создаем Excel-файл
             def generate_excel():
@@ -234,7 +234,7 @@ async def export_buses(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
                     bus_id = str(bus["ID"])
                     sheet_name = f"Автобус {bus['Number']}"[:31]  # Ограничение длины имени листа
                     ws = wb.create_sheet(title=sheet_name)
-                    
+
                     # Добавляем заголовок с информацией об автобусе
                     bus_info = [
                         f"Автобус: {bus.get('Number', '')}",
@@ -243,7 +243,7 @@ async def export_buses(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
                         f"Дата/время: {bus.get('DepartureDate', '')} {bus.get('DepartureTime', '')}",
                         f"Вместимость: {bus.get('Capacity', '')}",
                     ]
-                    
+
                     # Находим ответственных за автобус
                     owners = [o for o in bus_owners if str(o.get("BusID")) == bus_id]
                     responsible_persons = []
@@ -253,20 +253,20 @@ async def export_buses(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
                             responsible_persons.append(
                                 f"{chief.get('ФИО', '')} (@{chief.get('Telegram_username', '')})"
                             )
-                    
+
                     if responsible_persons:
                         bus_info.append(f"Ответственные: {', '.join(responsible_persons)}")
-                    
+
                     # Записываем информацию об автобусе
                     for line in bus_info:
                         ws.append([line])
-                    
+
                     # Пустая строка для разделения
                     ws.append([])
-                    
+
                     # Заголовки таблицы пассажиров
                     ws.append(["№", "ФИО", "Username", "Телефон", "Комментарий"])
-                    
+
                     # Данные пассажиров
                     for idx, passenger in enumerate(bus_passengers.get(bus_id, []), start=1):
                         ws.append([
@@ -290,7 +290,7 @@ async def export_buses(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
                     filename=f"bus_report_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
                     caption="✅ Отчет по автобусам"
                 )
-            
+
             await msg.delete()
 
         except Exception as e:
@@ -315,7 +315,7 @@ async def step_select_direction(query, context):
 
     # Получение уникальных направлений, которые есть у автобусов
     directions = sorted(set(b['Direction'] for b in buses if 'Direction' in b and b['Direction'].strip()))
-    
+
     # Проверка, есть ли вообще направления
     if not directions:
         await query.edit_message_text("На данный момент нет доступных направлений.")
@@ -466,7 +466,7 @@ async def view_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"({bus['Departure_Place']}-{bus['Destination']})-{bus['Direction']}\n"
             )
             keyboard.append([InlineKeyboardButton(f"Отменить бронь: Автобус: {bus['Number']}-{bus['Direction']}", callback_data=f"cancel_reservation_{res['ID']}")])
-    
+
     keyboard.append([InlineKeyboardButton("Назад", callback_data="back_to_menu")])
 
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -547,36 +547,24 @@ async def delete_reservation(update, context, reservation_id):
     await query.edit_message_text("Ваша запись отменена.", reply_markup=reply_markup)
 
 async def show_how_to_get_there(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    info_message = (
-        "Планируете добираться до мероприятия самостоятельно?\n"
-        "Мы собрали для вас удобные варианты проезда различными видами транспорта – выбирайте свой!\n"
-        "**Адрес отеля**: Московская область, Ногинский район, д. Новая Купавна, местечко Родинки, ул. Сиреневая, д.21 стр.1\n"
-        "**Метки на картах**: [Гугл-карта](https://goo.gl/maps/7doSnWnGg4mb8QqG6), [Яндекс-карта](https://yandex.ru/maps/-/CCUWeOGxwD)\n\n"
-        "На электричке (время в пути ~2,5 часа)\n"
-        "от Курского или Белорусского вокзала до станции Купавна (цена билета ~150 руб), \n"
-        "затем 20-30 мин на такси (~650 руб.) до отеля Ареал\n"
-        "или автобусе 37щ до ост. Улица Орлова, 26 и пешком/на такси (~350 руб.) до отеля 3 км.\n\n"
-        "**Расписание электричек**: [туда](https://ticket.rzd.ru/searchresults/v/1/5a323c29340c7441a0a556bb/5cd18d837081a600437b02f2/) и [обратно](https://ticket.rzd.ru/searchresults/v/1/5cd18d837081a600437b02f2/5a323c29340c7441a0a556bb/) пожалуйста, внимательно проверяйте станцию отправления и прибытия в Москве, расписание указано для двух вокзалов.\n\n"
-        "На автобусе (время в пути ~1,5 часа)\n"
-        "от ст. м. Партизанская/МЦК Измайлово (1 выход из метро) - автобусы №322 или №399 или №444\n"
-        "от м. Новогиреево маршрутное такси №1209к, №587к или №886к (6 выход из метро); \n"
-        "до ост. Новая Купавна, перейти Горьковское шоссе, \n"
-        "далее на такси 5-7 мин (~250 руб.) или пешком около 2,3 км по указателям (для спортивных участников).\n\n"
-        "**Расписание автобусов**: [туда](https://rasp.yandex.ru/search/bus/?fromId=c213&fromName=%D0%9C%D0%BE%D1%81%D0%BA%D0%B2%D0%B0&toId=c33762&toName=%D0%9D%D0%BE%D0%B2%D0%B0%D1%8F+%D0%9A%D1%83%D0%BF%D0%B0%D0%B2%D0%BD%D0%B0&when=23+%D0%BC%D0%B0%D1%8F) и [обратно](https://rasp.yandex.ru/search/bus/?fromId=c33762&fromName=%D0%9D%D0%BE%D0%B2%D0%B0%D1%8F+%D0%9A%D1%83%D0%BF%D0%B0%D0%B2%D0%BD%D0%B0&toId=c213&toName=%D0%9C%D0%BE%D1%81%D0%BA%D0%B2%D0%B0&when=25+%D0%BC%D0%B0%D1%8F) пожалуйста, внимательно проверяйте даты отправления и прибытия, данные актуальны для пятницы 23 мая и воскресенья 25 мая соответственно.\n\n"
-        "На машине (время в пути ~1 час)\n"
-        "на территории отеля есть бесплатная парковка на 190 мест, находится перед въездом в отель (пропуск не требуется). Подъезд со стороны Горьковского шоссе. \n"
-        "Если есть свободные места и вы можете взять попутчиков, укажите это в чате: https://t.me/c/123456789/101112, начните знакомство еще до кэмпа!😉\n\n"
-        "**Из аэропортов Москвы**\n"
-        "Шереметьево (~2,5 часа)\n"
-        "[Аэроэкспрессе](https://aeroexpress.ru/)(~650 руб.) до Окружной, пересесть на МЦК до ст. Измайловская;\n"
-        "или [Экспресс автобус](https://aeroexpress.ru/) (~400 руб.) до Ховрино, затем на МЦК до ст. Партизанская.\n"
-        "далее на автобусе №322, №399 или №444 до ост. Новая Купавна, далее на такси (~250 руб.) или пешком около 2,3 км.\n"
-        "Внуково (~2,5 часа)\n"
-        "на метро от ст. Аэропорт Внуково до ст. Партизанская, далее на автобусе №322, №399 или №444 до ост. Новая Купавна, далее на такси (~250 руб.) или пешком 2,3 км.\n"
-        "Домодедово (~2,5 часа)\n"
-        "на [Аэроэкспрессе](https://aeroexpress.ru/) (~650 руб.) до Верхних Котлов, пересесть на МЦК до ст. Измайловская, далее на автобусе (№322, 399 или №444) до ост. Новая Купавна, затем на такси (~250 руб.) или пешком 2,3 км.\n"
-        "❗️ Учитывайте, пожалуйста, что в пятницу вечером и субботу утром на данном направлении могут быть пробки из Москвы, а в воскресенье вечером - в Москву, что может вызвать задержки в пути❗️"
-    )
+    info_message = ("""
+    Альтернативные варианты как добраться из Москвы до отеля «Азимут Переславль-Залесский» и обратно:
+
+    1). Поездом
+
+    Поезда № 102Я, 104Я, 106Я Москва (Ярославский вокзал) - ст. Берендеево. По субботам и воскресеньям ходит дополнительный поезд 928М. Выйти нужно на станции Берендеево, путь до отеля займет 15 минут на такси.
+    Актуальное расписание поездов на сайте РЖД: https://www.rzd.ru/
+
+    2). Автобусом
+
+    От Центрального автовокзала Москвы (м. Щелковская) автобусы прибывают на автовокзал Переславль-Залесский (Московская улица, 113). Путь до отеля займет 20 минут на такси.
+    Актуальное расписание автобусов на сайте Туту: https://bus.tutu.ru
+
+    3) Автомобиль или такси
+
+    Адрес отеля  «Азимут Переславль-Залесский»: Ярославская обл., Переславский р-н, с. Иванисово, ул. Дачная, д. 100.
+    Для гостей, не проживающих в отеле оплата парковки в размере - 200 руб. в сутки, первый час парковки бесплатный. Парковка для проживающих гостей бесплатная."""
+)
     query = update.callback_query
     keyboard = [
         [InlineKeyboardButton("Назад", callback_data="back_to_menu")],
@@ -598,7 +586,7 @@ async def render_faq(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "\n"
         "6. **Почему бот не пускает?** Вероятно, твой Telegram-ник не совпадает с базой волонтёров. Обратись к своему старшему или проверь, с какого аккаунта ты зашёл.\n"
         "\n"
-        "7. **Куда писать, если ничего не работает?** Если бот не пускает или что-то сломалось, напиши Данилу @maximovd или в [общий чат](https://t.me/c/2339287372/1173) ProductCamp во вкладку «Трансфер»\n"
+        "7. **Куда писать, если ничего не работает?** Если бот не пускает или что-то сломалось, напиши Данилу @maximovd или в общий чат ProductCamp во вкладку «Трансфер»\n"
         "\n"
         "8. **Что значит «в листе ожидания»?** Это значит, что автобус, на который ты хотел(а) записаться, уже заполнен. Однако бот всё равно добавил тебя в лист ожидания. Если кто-то отменит бронь — ты получишь уведомление и сможешь забронировать освободившееся место.\n"
         "\n"
@@ -648,7 +636,7 @@ async def confirm_booking(update, context, bus_id):
     buses_sheet = spreadsheet.worksheet("Buses")
     reservations_sheet = spreadsheet.worksheet("Reservations")
     wating_list_sheet = spreadsheet.worksheet("WaitingList")
-    
+
     passengers = passengers_sheet.get_all_records()
     passenger = next((p for p in passengers if p["Telegram_username"] == username), None)
     query = update.callback_query
@@ -726,20 +714,20 @@ async def confirm_booking(update, context, bus_id):
     waiting_records = wating_list_sheet.get_all_records()
 
     for wait in waiting_records:
-        if (str(wait.get("PassengerID")) == str(passenger["ID"]) and 
-            str(wait.get("BusID")) == str(bus_id) and 
+        if (str(wait.get("PassengerID")) == str(passenger["ID"]) and
+            str(wait.get("BusID")) == str(bus_id) and
             wait.get("Status") == "Waiting"):
-            
+
             # Находим и обновляем запись
             try:
                 cell = wating_list_sheet.find(str(wait["ID"]))
                 status_col = wating_list_sheet.find("Status").col
                 wating_list_sheet.update_cell(cell.row, status_col, "Confirmed")
-                
+
                 # Также обновляем NotificationSent, чтобы не отправлять повторные уведомления
                 notification_col = wating_list_sheet.find("NotificationSent").col
                 wating_list_sheet.update_cell(cell.row, notification_col, "Yes")
-                
+
                 logging.info(f"Обновлена запись в WaitingList: ID {wait['ID']} изменен на Confirmed")
             except Exception as e:
                 logging.error(f"Ошибка при обновлении WaitingList: {str(e)}")
@@ -777,15 +765,15 @@ async def process_waiting_list(application: Application, single_notification: bo
         # Группируем ожидающих по автобусам
         bus_waiting_groups = {}
         for wait in waiting_records:
-            if (wait.get("Status") == "Waiting" and 
-                wait.get("NotificationSent") == "No" and 
+            if (wait.get("Status") == "Waiting" and
+                wait.get("NotificationSent") == "No" and
                 wait.get("RequestTime")):
-                
+
                 try:
                     bus_id = wait.get("BusID")
                     if bus_id not in bus_waiting_groups:
                         bus_waiting_groups[bus_id] = []
-                    
+
                     request_time = datetime.strptime(wait["RequestTime"], "%Y-%m-%d %H:%M:%S")
                     bus_waiting_groups[bus_id].append((request_time, wait))
                 except (ValueError, TypeError):
@@ -796,7 +784,7 @@ async def process_waiting_list(application: Application, single_notification: bo
             # Пропускаем если автобус не существует или нет свободных мест
             if bus_id not in bus_capacity:
                 continue
-                
+
             free_places = bus_capacity[bus_id] - bus_reserved_counts.get(bus_id, 0)
             if free_places <= 0:
                 continue
@@ -808,14 +796,14 @@ async def process_waiting_list(application: Application, single_notification: bo
 
             for _, wait in waiting_list:
                 passenger_id = wait.get("PassengerID")
-                
+
                 # Проверка времени для сброса NotificationSent
                 request_time_str = wait.get("RequestTime")
                 if request_time_str:
                     try:
                         request_time = datetime.strptime(request_time_str, "%Y-%m-%d %H:%M:%S")
                         time_diff = current_time - request_time
-                        
+
                         # Если прошло более 2 суток и статус Waiting
                         if time_diff.total_seconds() > 172800 and wait.get("NotificationSent") == "Yes":
                             # Находим и обновляем запись
@@ -838,7 +826,7 @@ async def process_waiting_list(application: Application, single_notification: bo
                         )]
                     ]
                     reply_markup = InlineKeyboardMarkup(keyboard)
-                    
+
                     # Отправляем уведомление
                     try:
                         await application.bot.send_message(
@@ -848,15 +836,15 @@ async def process_waiting_list(application: Application, single_notification: bo
                                  "Нажмите кнопку ниже чтобы подтвердить бронь:",
                             reply_markup=reply_markup
                         )
-                        
+
                         # Обновляем статус NotificationSent
                         cell = ws.find(str(wait["ID"]))
                         notification_col = ws.find("NotificationSent").col
                         ws.update_cell(cell.row, notification_col, "Yes")
-                        
+
                         # Логируем успешную отправку
                         logging.info(f"Уведомление отправлено пассажиру {passenger_id} для автобуса {bus_id}")
-                            
+
                     except Exception as e:
                         logging.error(f"Ошибка отправки уведомления пассажиру {passenger_id}: {str(e)}")
 
