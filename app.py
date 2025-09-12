@@ -12,6 +12,9 @@ from telegram.ext import (
     CommandHandler,
     CallbackQueryHandler,
     ContextTypes,
+    MessageHandler,
+    filters,
+    ConversationHandler,
 )
 from dotenv import load_dotenv
 
@@ -34,6 +37,7 @@ passengers_sheet = spreadsheet.worksheet("Passengers")
 buses_sheet = spreadsheet.worksheet("Buses")
 reservations_sheet = spreadsheet.worksheet("Reservations")
 
+FIO, BUS_ID = range(2)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     # Получение chat_id и username пользователя
@@ -133,6 +137,162 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     else:
         await update.callback_query.message.reply_text(welcome_message, reply_markup=reply_markup)
 
+async def check_user_fio(username):
+    """Проверяет, есть ли у пользователя заполненное ФИО"""
+    try:
+        passengers = passengers_sheet.get_all_records()
+        passenger = next((p for p in passengers if p["Telegram_username"] == username), None)
+        if passenger and passenger.get("ФИО") and passenger["ФИО"].strip():
+            return True, passenger
+        return False, passenger
+    except Exception as e:
+        logging.error(f"Ошибка при проверке ФИО: {str(e)}")
+        return False, None
+
+async def request_fio(update: Update, context: ContextTypes.DEFAULT_TYPE, bus_id=None):
+    """Запрашивает ФИО у пользователя"""
+    query = update.callback_query
+    context.user_data['bus_id'] = bus_id
+
+    if query:
+        await query.answer()
+        await query.edit_message_text(
+            "📝 Для регистрации на автобус необходимо указать ваше ФИО (Фамилия Имя Отчество).\n\n"
+            "Пожалуйста, введите ваше полное ФИО:"
+        )
+    else:
+        await update.message.reply_text(
+            "📝 Для регистрации на автобус необходимо указать ваше ФИО (Фамилия Имя Отчество).\n\n"
+            "Пожалуйста, введите ваше полное ФИО:"
+        )
+
+    return FIO
+
+async def handle_fio_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обрабатывает ввод ФИО пользователем"""
+    fio = update.message.text.strip()
+
+    if not fio or len(fio) < 5:
+        await update.message.reply_text(
+            "❌ ФИО должно содержать не менее 5 символов. Пожалуйста, введите ваше полное ФИО:"
+        )
+        return FIO
+
+    # Сохраняем ФИО в базе данных
+    username = update.message.from_user.username
+    try:
+        passengers = passengers_sheet.get_all_records()
+        passenger_record = next((p for p in passengers if p["Telegram_username"] == username), None)
+
+        if passenger_record:
+            # Находим ячейку с ФИО и обновляем ее
+            cell = passengers_sheet.find(username)
+            headers = passengers_sheet.row_values(1)
+
+            if "ФИО" in headers:
+                fio_col_idx = headers.index("ФИО") + 1
+                passengers_sheet.update_cell(cell.row, fio_col_idx, fio)
+
+            # Продолжаем процесс регистрации, если был выбран автобус
+            bus_id = context.user_data.pop('bus_id', None)
+            if bus_id:
+                await confirm_booking_from_fio(update, context, bus_id, fio)
+            else:
+                await update.message.reply_text(
+                    f"✅ ФИО успешно сохранено: {fio}\n\n"
+                    "Теперь вы можете записаться на автобус через главное меню."
+                )
+                await start(update, context)
+        else:
+            await update.message.reply_text(
+                "❌ Ошибка: пользователь не найден в базе данных. Попробуйте начать с команды /start"
+            )
+
+    except Exception as e:
+        logging.error(f"Ошибка при сохранении ФИО: {str(e)}")
+        await update.message.reply_text(
+            "❌ Произошла ошибка при сохранении ФИО. Попробуйте позже или обратитесь к администратору."
+        )
+
+    return ConversationHandler.END
+
+async def cancel_fio_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Отменяет ввод ФИО"""
+    await update.message.reply_text("Ввод ФИО отменен. Вы можете попробовать снова через главное меню.")
+    context.user_data.pop('bus_id', None)
+    return ConversationHandler.END
+
+async def confirm_booking_from_fio(update: Update, context: ContextTypes.DEFAULT_TYPE, bus_id: int, fio: str):
+    """Продолжает процесс подтверждения брони после ввода ФИО"""
+    username = update.message.from_user.username
+    passengers = passengers_sheet.get_all_records()
+    passenger = next((p for p in passengers if p["Telegram_username"] == username), None)
+
+    if not passenger:
+        await update.message.reply_text(
+            "К сожалению, я не вижу тебя в списках участиников кэмпа, "
+            "для решение данного вопроса, обратись к своему старшему, либо напиши: @maximovd"
+        )
+        return
+
+    buses = buses_sheet.get_all_records()
+    reservations = reservations_sheet.get_all_records()
+
+    bus = next((b for b in buses if b["ID"] == bus_id), None)
+    if not bus:
+        await update.message.reply_text("Автобус не найден.")
+        return
+
+    # Получаем вместимость автобуса
+    capacity_value = bus.get("Capacity", "")
+    if isinstance(capacity_value, str):
+        capacity_str = capacity_value.strip()
+        try:
+            capacity = int(capacity_str)
+        except ValueError:
+            capacity = 0
+    elif isinstance(capacity_value, int):
+        capacity = capacity_value
+    else:
+        capacity = 0
+
+    # Проверка, заняты ли все места
+    bus_reservations = [r for r in reservations if int(r["Bus"]) == int(bus_id)]
+    if len(bus_reservations) >= capacity:
+        await update.message.reply_text("Все места в автобусе уже заняты.")
+        return
+
+    # Проверка, есть ли регистрация на этот автобус и направление
+    direction_value = bus.get("Direction", "")
+    existing_res = [
+        r for r in reservations
+        if r["Passenger"] == str(passenger["ID"]) and r["Bus"] == str(bus_id) and r.get("Direction", "") == direction_value
+    ]
+    if existing_res:
+        await update.message.reply_text("Вы уже зарегистрированы на этот автобус и направление.")
+        return
+
+    # Создание новой брони
+    existing_ids = [int(val) for val in reservations_sheet.col_values(1) if val.replace('.', '', 1).isdigit()]
+    max_id = max(existing_ids) if existing_ids else 0
+    new_id = str(max_id + 1)
+    direction = bus.get("Direction", "")
+
+    new_reservation = [
+        new_id,
+        str(passenger["ID"]),
+        str(bus_id),
+        datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        direction,
+    ]
+    reservations_sheet.append_row(new_reservation)
+
+    await update.message.reply_text(
+        f"Вы успешно записаны на автобус: {bus['Number']} "
+        f"({bus['DepartureDate']} {bus['DepartureTime']}) "
+        f"{bus['Departure_Place']}-{bus['Destination']}\n\n"
+    )
+
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
     await query.answer()
@@ -148,7 +308,16 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await show_buses_for_direction(query, context, direction)
     elif query.data.startswith("select_bus_"):
         bus_id = int(query.data.split("_")[2])
-        await confirm_booking(update, context, bus_id)
+        # Проверяем наличие ФИО перед регистрацией
+        has_fio, passenger = await check_user_fio(query.from_user.username)
+        if not has_fio:
+            # Сохраняем bus_id в user_data и запускаем процесс ввода ФИО
+            context.user_data['bus_id'] = bus_id
+            await request_fio(update, context, bus_id)
+            return FIO
+        else:
+            await confirm_booking(update, context, bus_id)
+
     elif query.data.startswith("cancel_reservation_"):
         reservation_id = int(query.data.split("_")[2])
         await delete_reservation(update, context, reservation_id)
@@ -972,8 +1141,18 @@ async def periodic(application):
 def main():
     application = Application.builder().token(TOKEN).post_init(post_init).build()
 
+    # Создаем ConversationHandler для обработки ввода ФИО
+    conv_handler = ConversationHandler(
+        entry_points=[CallbackQueryHandler(button)],
+        states={
+            FIO: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_fio_input)],
+        },
+        fallbacks=[CommandHandler('cancel', cancel_fio_input)],
+    )
+
     application.add_handler(CommandHandler("start", start))
-    application.add_handler(CallbackQueryHandler(button))
+    application.add_handler(conv_handler)
+    # application.add_handler(CallbackQueryHandler(button))
     application.add_handler(CommandHandler("confirm", confirm_waiting))
     application.add_handler(CommandHandler("wait", handle_waiting_list_entry))
     # Периодическая обработка листа ожидания
