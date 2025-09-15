@@ -308,16 +308,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await show_buses_for_direction(query, context, direction)
     elif query.data.startswith("select_bus_"):
         bus_id = int(query.data.split("_")[2])
-        # Проверяем наличие ФИО перед регистрацией
-        has_fio, passenger = await check_user_fio(query.from_user.username)
-        if not has_fio:
-            # Сохраняем bus_id в user_data и запускаем процесс ввода ФИО
-            context.user_data['bus_id'] = bus_id
-            await request_fio(update, context, bus_id)
-            return FIO
-        else:
-            await confirm_booking(update, context, bus_id)
-
+        await confirm_booking(update, context, bus_id)
     elif query.data.startswith("cancel_reservation_"):
         reservation_id = int(query.data.split("_")[2])
         await delete_reservation(update, context, reservation_id)
@@ -1141,18 +1132,18 @@ async def periodic(application):
 def main():
     application = Application.builder().token(TOKEN).post_init(post_init).build()
 
-    # Создаем ConversationHandler для обработки ввода ФИО
-    conv_handler = ConversationHandler(
-        entry_points=[CallbackQueryHandler(button)],
-        states={
-            FIO: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_fio_input)],
-        },
-        fallbacks=[CommandHandler('cancel', cancel_fio_input)],
-    )
+    # # Создаем ConversationHandler для обработки ввода ФИО
+    # conv_handler = ConversationHandler(
+    #     entry_points=[CallbackQueryHandler(button)],
+    #     states={
+    #         FIO: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_fio_input)],
+    #     },
+    #     fallbacks=[CommandHandler('cancel', cancel_fio_input)],
+    # )
 
     application.add_handler(CommandHandler("start", start))
-    application.add_handler(conv_handler)
-    # application.add_handler(CallbackQueryHandler(button))
+    # application.add_handler(conv_handler)
+    application.add_handler(CallbackQueryHandler(button))
     application.add_handler(CommandHandler("confirm", confirm_waiting))
     application.add_handler(CommandHandler("wait", handle_waiting_list_entry))
     # Периодическая обработка листа ожидания
