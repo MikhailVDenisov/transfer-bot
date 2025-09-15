@@ -540,8 +540,11 @@ async def export_buses(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 async def step_select_direction(query, context):
     buses = get_all_buses()
 
-    # Получение уникальных направлений
-    directions = sorted(set(b[7] for b in buses if b[7] and b[7].strip()))  # Direction в восьмой колонке
+    # Получение уникальных направлений только из активных автобусов
+    directions = sorted(set(
+        b[7] for b in buses
+        if b[7] and b[7].strip() and (len(b) <= 8 or bool(b[8]))  # Только активные автобусы
+    ))
 
     if not directions:
         await query.edit_message_text("На данный момент нет доступных направлений.")
@@ -570,65 +573,62 @@ async def show_buses_for_direction(query, context, direction):
         return
 
     # Проверка, есть ли уже регистрация у пользователя на данное направление
-    user_reservations = get_reservations_by_passenger(passenger[0])  # ID в первой колонке
+    user_reservations = get_reservations_by_passenger(passenger[0])
     existing_res = [
         r for r in user_reservations
-        if r[4] == direction  # Direction в пятой колонке
+        if r[4] == direction
     ]
     if existing_res:
         await query.edit_message_text("Вы уже зарегистрированы на это направление.")
         return
 
-    # Фильтрация автобусов по выбранному направлению
-    buses_for_direction = [b for b in buses if b[7] == direction]  # Direction в восьмой колонке
+    # Фильтрация автобусов по выбранному направлению и активности
+    # Показываем только активные автобусы (is_active = TRUE или поле отсутствует)
+    buses_for_direction = [
+        b for b in buses
+        if b[7] == direction and (len(b) <= 8 or bool(b[8]))  # is_active в девятой колонке
+    ]
 
-    # Собираем информацию о занятости
-    bus_info_list = []
-    for bus in buses_for_direction:
-        bus_id = bus[0]  # ID в первой колонке
-        capacity = bus[6]  # Capacity в седьмой колонке
-        bus_reservations = [r for r in reservations if r[2] == bus_id]  # BusID в третьей колонке
-        booked = len(bus_reservations)
-        free_places = capacity - booked
-        bus_info_list.append((bus, free_places > 0))
-
-    # Отобрать все автобусы даже если они заполнены
-    all_buses = buses_for_direction
+    # Если нет активных автобусов для направления
+    if not buses_for_direction:
+        await query.edit_message_text(
+            f"На данный момент нет доступных автобусов для направления {direction}.\n"
+            "Пожалуйста, проверьте позже или выберите другое направление."
+        )
+        return
 
     # Формируем сообщение
-    message = f"Все автобусы для направления {direction}:\n\n"
+    message = f"Доступные автобусы для направления {direction}:\n\n"
 
-    for bus in all_buses:
-        capacity = bus[6]  # Capacity в седьмой колонке
-        booked = sum(1 for r in reservations if r[2] == bus[0])  # BusID в третьей колонке
+    for bus in buses_for_direction:
+        capacity = bus[6]
+        booked = sum(1 for r in reservations if r[2] == bus[0])
         free = capacity - booked
-        if free <= 0:
-            status = "Свободных мест: 0"
-        else:
-            status = f"Свободных мест: {free}"
+        status = f"Свободных мест: {free}" if free > 0 else "Мест нет"
         message += (
-            f"Автобус {bus[1]} ({bus[4]} {bus[5]}): {status}\n"  # Number, DepartureDate, DepartureTime
+            f"Автобус {bus[1]} ({bus[4]} {bus[5]}): {status}\n"
         )
 
-    # Создавать кнопки для всех автобусов
+    # Создавать кнопки для всех активных автобусов
     keyboard = []
 
-    for bus in all_buses:
-        capacity = bus[6]  # Capacity в седьмой колонке
-        booked = sum(1 for r in reservations if r[2] == bus[0])  # BusID в третьей колонке
+    for bus in buses_for_direction:
+        capacity = bus[6]
+        booked = sum(1 for r in reservations if r[2] == bus[0])
         free = capacity - booked
+
         if free > 0:
             keyboard.append([
                 InlineKeyboardButton(
-                    f"Автобус {bus[1]} - {free} мест",  # Number
-                    callback_data=f"select_bus_{bus[0]}"  # ID
+                    f"Автобус {bus[1]} - {free} мест",
+                    callback_data=f"select_bus_{bus[0]}"
                 )
             ])
         else:
             keyboard.append([
                 InlineKeyboardButton(
-                    f"Автобус {bus[1]} - в лист ожидания",  # Number
-                    callback_data=f"set_waiting_bus_{bus[0]}"  # ID
+                    f"Автобус {bus[1]} - в лист ожидания",
+                    callback_data=f"set_waiting_bus_{bus[0]}"
                 )
             ])
 
@@ -914,7 +914,12 @@ async def process_waiting_list(application: Application, single_notification: bo
         passengers = execute_query("SELECT * FROM Passengers", fetch_all=True)
 
         # Подготавливаем данные о вместимости автобусов
-        bus_capacity = {b[0]: b[6] for b in buses}  # ID: Capacity
+        bus_capacity = {}
+        for b in buses:
+            # Проверяем активен ли автобус
+            if len(b) > 8 and not bool(b[8]):
+                continue  # Пропускаем неактивные автобусы
+            bus_capacity[b[0]] = b[6]
 
         # Подсчитываем количество броней для каждого автобуса
         bus_reserved_counts = {}
