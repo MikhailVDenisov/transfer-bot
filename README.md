@@ -282,8 +282,8 @@ mypy .
 
 Если у вас есть вопросы, свяжитесь с нами:
 
-- Email: admin@example.com
-- Telegram: @your_support_bot
+- Email: bazinga.mail@yandex.ru
+- Telegram: @maximovd
 
 ---
 
