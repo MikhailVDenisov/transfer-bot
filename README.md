@@ -1,138 +1,290 @@
-# Transfer Bot for ProductCamp
+# Transfer Bot 🚌
 
-Телеграм-бот для организации трансферов на мероприятие ProductCamp. Позволяет участникам бронировать места в автобусах, просматривать свои брони и получать информацию о маршрутах.
+Telegram бот для управления трансферами на корпоративные мероприятия
 
-## Функционал
+## 📋 Описание
 
-- 📌 Запись на автобусы по направлениям
-- 👀 Просмотр текущих броней пользователя
-- ❌ Отмена бронирования
-- 📊 Админ-панель с выгрузкой данных (для организаторов)
-- 📅 Лист ожидания с уведомлениями о свободных местах
-- ℹ️ Информация о маршрутах и способах добраться
+Transfer Bot - это современный Telegram бот, разработанный для автоматизации процесса бронирования трансферов на корпоративные мероприятия. Бот позволяет сотрудникам легко бронировать места в автобусах, управлять своими бронированиями и получать уведомления о доступных местах.
 
-## Технологии
+## ✨ Основные возможности
 
-- Python 3.10+
-- python-telegram-bot 20.x
-- Google Sheets API (gspread)
-- oauth2client
-- python-dotenv
+- 🎫 **Бронирование мест** - Простое бронирование места в автобусе
+- 📋 **Управление бронированиями** - Просмотр и отмена существующих бронирований  
+- ⏳ **Лист ожидания** - Автоматическое уведомление при освобождении мест
+- 📊 **Экспорт данных** - Экспорт списков пассажиров в Excel (для администраторов)
+- 🔍 **Фильтрация по направлениям** - Поиск автобусов по нужному направлению
+- 👥 **Управление пользователями** - Система ролей (пользователь/администратор)
 
-## Установка и настройка
+## 🛠️ Makefile
+
+Проект включает удобный Makefile с командами для разработки:
+
+```bash
+make help        # Показать все доступные команды
+make dev-setup   # Полная настройка среды разработки
+make test        # Запустить тесты
+make test-fast   # Быстрые тесты без покрытия
+make format      # Отформатировать код
+make clean       # Очистить временные файлы
+```
+
+## 🏗️ Архитектура
+
+Проект построен с использованием современных принципов разработки:
+
+- **Модульная архитектура** - Разделение на слои (handlers, services, repositories)
+- **Dependency Injection** - Слабая связанность компонентов
+- **Repository Pattern** - Абстракция работы с данными
+- **Service Layer** - Бизнес-логика отделена от обработчиков
+- **Factory Pattern** - Для создания тестовых данных
+
+## 📁 Структура проекта
+
+```
+transfer-bot/
+├── app.py                 # Главный файл приложения
+├── config/                # Конфигурация
+│   └── settings.py
+├── database/              # Слой данных
+│   ├── connection.py      # Подключение к БД
+│   ├── init_db.py         # Инициализация БД
+│   └── repositories.py    # Репозитории
+├── handlers/              # Обработчики Telegram
+│   ├── base_handler.py
+│   ├── booking_handler.py
+│   ├── callback_handler.py
+│   └── ...
+├── models/                # Модели данных
+│   └── entities.py
+├── services/              # Бизнес-логика
+│   ├── booking_service.py
+│   ├── bus_service.py
+│   └── ...
+├── utils/                 # Утилиты
+│   ├── keyboards.py
+│   ├── messages.py
+│   └── validators.py
+├── tests/                 # Тесты
+│   ├── unit/
+│   ├── integration/
+│   └── fixtures/
+└── pyproject.toml         # Конфигурация проекта
+```
+
+## 🚀 Установка и запуск
+
+### Требования
+
+- Python 3.9+
+- SQLite3
+- Telegram Bot Token
+
+### Установка
 
 1. Клонируйте репозиторий:
 ```bash
-git clone https://github.com/yourusername/productcamp-transfer-bot.git
-cd productcamp-transfer-bot
+git clone https://github.com/your-org/transfer-bot.git
+cd transfer-bot
 ```
 
-2. Установите зависимости:
+2. Создайте виртуальное окружение:
 ```bash
-pip install -r requirements.txt
+python -m venv .venv
+source .venv/bin/activate  # Linux/Mac
+# или
+.venv\Scripts\activate     # Windows
 ```
 
-3. Настройте окружение:
-   - Создайте файл `.env` в корне проекта
-   - Заполните его по примеру `.env.example`:
-```
-TELEGRAM_TOKEN=ваш_токен_бота
-GOOGLE_OAUTH_TOKEN=id_google_таблицы
-GOOGLE_CREDENTIALS_JSON={"type": "service_account", ...}
-```
-
-4. Настройте Google Sheets:
-   - Создайте таблицу с листами: `Passengers`, `Buses`, `Reservations`, `WaitingList`, `BusOwners`
-   - Предоставьте доступ для service account из credentials
-
-## Структура проекта (TOBE)
-
-```
-productcamp-transfer-bot/
-├── app.py                 # Точка входа
-├── bot.py                 # Основной класс бота
-├── config.py              # Конфигурация
-├── requirements.txt       # Зависимости
-├── .env.example           # Шаблон .env файла
-├── database/              # Работа с данными
-│   ├── gsheets_client.py  # Клиент Google Sheets
-│   └── repositories/      # Репозитории для таблиц
-├── handlers/              # Обработчики команд
-├── services/              # Бизнес-логика
-├── models/                # Модели данных
-└── utils/                 # Вспомогательные утилиты
-```
-
-## Запуск
-
-1. В режиме разработки:
+3. Установите зависимости:
 ```bash
+# Через Makefile (рекомендуется)
+make install
+
+# Или прямая команда
+pip install -e .
+```
+
+4. Создайте файл `.env` с настройками:
+```env
+TELEGRAM_TOKEN=your_bot_token_here
+ADMIN_USERNAMES=admin1,admin2
+DB_PATH=transfer_bot.db
+WAITING_LIST_CHECK_INTERVAL=300
+```
+
+5. Инициализируйте базу данных:
+```bash
+# Через Makefile (рекомендуется)
+make db-init
+
+# Или прямая команда
+python -c "from database.init_db import init_database; init_database()"
+```
+
+6. Запустите бота:
+```bash
+# Через Makefile (рекомендуется)
+make run
+
+# Или прямая команда
 python app.py
 ```
 
-2. В production (с использованием systemd или supervisor):
-```ini
-[program:transfer_bot]
-command=python /path/to/app.py
-directory=/path/to/project
-user=www-data
-autostart=true
-autorestart=true
-environment=PYTHONPATH="/path/to/project"
+### Быстрая настройка для разработки
+
+```bash
+# Полная настройка среды разработки одной командой
+make dev-setup
 ```
 
-## Администрирование
+## 🧪 Тестирование
 
-Для назначения прав администратора:
-1. Добавьте пользователя в лист `Passengers`
-2. В столбце `Role` укажите `admin`
+Проект имеет comprehensive test suite с покрытием 67%.
 
-Администраторы получают доступ к:
-- Кнопке "Выгрузить данные" в главном меню
-- Полному Excel-отчету по бронированиям
+### Makefile команды (рекомендуется)
 
-## Особенности реализации
+```bash
+# Все тесты
+make test
 
-1. **Лист ожидания**:
-   - Автоматическая проверка каждые 10 минут
-   - Уведомления при освобождении мест
-   - Очередь по времени подачи заявки
+# Быстрые тесты (без покрытия)
+make test-fast
 
-2. **Интеграция с Google Sheets**:
-   - Все данные хранятся в облачной таблице
-   - Реализованы репозитории для каждой сущности
-   - Авторизация через Service Account
+# Только unit тесты
+make test-unit
 
-3. **Логика бронирования**:
-   - Проверка доступности мест
-   - Защита от дублирования броней
-   - Поддержка разных направлений
+# Только integration тесты  
+make test-integration
 
-## Разработка
+# С покрытием кода
+make test-cov
 
-Для добавления новой функциональности:
-
-1. Создайте обработчик в `handlers/`
-2. Реализуйте бизнес-логику в `services/`
-3. Добавьте необходимые методы в репозитории
-4. Зарегистрируйте обработчик в `bot.py`
-
-Пример добавления команды:
-```python
-# handlers/new_feature.py
-from telegram import Update
-from telegram.ext import ContextTypes
-
-async def handle_new_feature(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("New feature works!")
-
-# bot.py
-from handlers.new_feature import handle_new_feature
-
-def setup_handlers(application):
-    application.add_handler(CommandHandler("new", handle_new_feature))
+# С HTML отчетом
+make test-html
 ```
 
-## Лицензия
+### Прямые pytest команды
 
-MIT License
+```bash
+# Все тесты
+pytest
+
+# Только unit тесты
+pytest -m unit
+
+# Только integration тесты  
+pytest -m integration
+
+# С покрытием кода
+pytest --cov
+
+# С HTML отчетом
+pytest --cov --cov-report=html
+```
+
+### Установка тестовых зависимостей
+
+```bash
+# Через Makefile (рекомендуется)
+make install-test
+
+# Прямая команда
+pip install -e ".[test]"
+```
+
+## 🛠️ Разработка
+
+### Makefile команды для разработки
+
+```bash
+# Полная настройка среды разработки
+make dev-setup
+
+# Установка dev зависимостей
+make install-dev
+
+# Форматирование кода
+make format
+
+# Проверка форматирования
+make check-format
+
+# Проверка импортов
+make check-imports
+
+# Линтинг
+make lint
+
+# Проверка типов
+make check-types
+
+# Все проверки сразу
+make check-all
+
+# Быстрая проверка для разработки
+make dev
+
+# Очистка временных файлов
+make clean
+
+# Полная очистка
+make clean-all
+
+# Информация о проекте
+make info
+
+# Помощь по командам
+make help
+```
+
+### Прямые команды
+
+```bash
+# Установка dev зависимостей
+pip install -e ".[dev]"
+
+# Форматирование кода
+black .
+isort .
+
+# Статический анализ
+flake8 .
+mypy .
+```
+
+## 📊 Покрытие кода
+
+Текущее покрытие тестами: **67%**
+
+- **Repositories**: 100% ✅
+- **Models**: 100% ✅  
+- **Utils**: 95%+ ✅
+- **Services**: 35-93% 🔄
+- **Handlers**: 41-95% 🔄
+
+## 🤝 Участие в разработке
+
+1. Форкните проект
+2. Создайте feature branch (`git checkout -b feature/amazing-feature`)
+3. Сделайте commit (`git commit -m 'Add amazing feature'`)
+4. Push в branch (`git push origin feature/amazing-feature`)
+5. Откройте Pull Request
+
+## 📝 Лицензия
+
+Этот проект лицензирован под MIT License - см. файл [LICENSE](LICENSE) для деталей.
+
+## 🐛 Сообщения об ошибках
+
+Если вы нашли ошибку, пожалуйста, создайте [issue](https://github.com/your-org/transfer-bot/issues) с подробным описанием.
+
+## 📞 Поддержка
+
+Если у вас есть вопросы, свяжитесь с нами:
+
+- Email: admin@example.com
+- Telegram: @your_support_bot
+
+---
+
+Made with ❤️ by Transfer Bot Team

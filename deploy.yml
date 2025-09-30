@@ -1,0 +1,122 @@
+---
+- name: Deploy Transfer Bot
+  hosts: production
+  become: yes
+  vars:
+    bot_user: transfer-bot
+    bot_home: /opt/transfer-bot
+    bot_service: transfer-bot
+    python_version: python3
+
+  tasks:
+    - name: Update package cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+      when: ansible_os_family == "Debian"
+
+    - name: Install system packages
+      package:
+        name:
+          - python3
+          - python3-pip
+          - python3-venv
+          - git
+          - systemd
+        state: present
+
+    - name: Create bot user
+      user:
+        name: "{{ bot_user }}"
+        system: yes
+        shell: /bin/bash
+        home: "{{ bot_home }}"
+        create_home: yes
+
+    - name: Create bot directory
+      file:
+        path: "{{ bot_home }}"
+        state: directory
+        owner: "{{ bot_user }}"
+        group: "{{ bot_user }}"
+        mode: '0755'
+
+    - name: Copy bot files
+      synchronize:
+        src: "{{ playbook_dir }}/"
+        dest: "{{ bot_home }}/"
+        delete: yes
+        exclude:
+          - .git/
+          - __pycache__/
+          - "*.pyc"
+          - .env
+          - transfer_bot.db
+          - deploy.yml
+          - inventory.ini
+          - ansible.cfg
+      become_user: "{{ bot_user }}"
+      delegate_to: localhost
+      tags: sync
+
+    - name: Set ownership of bot files
+      file:
+        path: "{{ bot_home }}"
+        owner: "{{ bot_user }}"
+        group: "{{ bot_user }}"
+        recurse: yes
+
+    - name: Create Python virtual environment
+      command: python3 -m venv {{ bot_home }}/venv
+      become_user: "{{ bot_user }}"
+      args:
+        creates: "{{ bot_home }}/venv/bin/activate"
+
+    - name: Upgrade pip in virtual environment
+      pip:
+        name: pip
+        state: latest
+        virtualenv: "{{ bot_home }}/venv"
+      become_user: "{{ bot_user }}"
+
+    - name: Install Python dependencies
+      pip:
+        requirements: "{{ bot_home }}/requirements.txt"
+        virtualenv: "{{ bot_home }}/venv"
+      become_user: "{{ bot_user }}"
+
+    - name: Create .env file from template
+      template:
+        src: env.j2
+        dest: "{{ bot_home }}/.env"
+        owner: "{{ bot_user }}"
+        group: "{{ bot_user }}"
+        mode: '0600'
+      tags: env
+
+    - name: Create systemd service file
+      template:
+        src: transfer-bot.service.j2
+        dest: /etc/systemd/system/{{ bot_service }}.service
+        mode: '0644'
+      notify:
+        - reload systemd
+        - restart transfer-bot
+
+    - name: Enable and start bot service
+      systemd:
+        name: "{{ bot_service }}"
+        enabled: yes
+        state: started
+        daemon_reload: yes
+
+  handlers:
+    - name: reload systemd
+      systemd:
+        daemon_reload: yes
+
+    - name: restart transfer-bot
+      systemd:
+        name: "{{ bot_service }}"
+        state: restarted
+      tags: restart

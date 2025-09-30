@@ -1,0 +1,31 @@
+[Unit]
+Description=Transfer Bot - Telegram bot for bus booking
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User={{ bot_user }}
+Group={{ bot_user }}
+WorkingDirectory={{ bot_home }}
+Environment=PATH={{ bot_home }}/venv/bin
+ExecStart={{ bot_home }}/venv/bin/python {{ bot_home }}/app.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=transfer-bot
+
+# Security settings
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths={{ bot_home }}
+
+# Resource limits
+LimitNOFILE=65536
+LimitNPROC=4096
+
+[Install]
+WantedBy=multi-user.target

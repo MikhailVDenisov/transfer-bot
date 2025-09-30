@@ -1,3 +1,6 @@
 .venv
-Фичи.rtf
 client_secret_v2.json
+transfer_bot.db
+transfer_bot.egg-info
+__pycache__
+
