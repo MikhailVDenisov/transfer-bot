@@ -104,6 +104,16 @@ def in_memory_db():
     )
     """
     )
+    for stmt in (
+            "CREATE INDEX IF NOT EXISTS idx_buses_direction_is_active ON Buses (Direction, is_active)",
+            "CREATE INDEX IF NOT EXISTS idx_reservations_busid ON Reservations (BusID)",
+            "CREATE INDEX IF NOT EXISTS idx_reservations_passengerid ON Reservations (PassengerID)",
+            "CREATE INDEX IF NOT EXISTS idx_waitinglist_status ON WaitingList (Status)",
+            "CREATE INDEX IF NOT EXISTS idx_waitinglist_passenger_bus_status ON WaitingList (PassengerID, BusID, Status)",
+            "CREATE INDEX IF NOT EXISTS idx_busowners_busid ON BusOwners (BusID)",
+            "CREATE INDEX IF NOT EXISTS idx_busowners_chiefid ON BusOwners (ChiefID)",
+    ):
+        cursor.execute(stmt)
 
     conn.commit()
 
