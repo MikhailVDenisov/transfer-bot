@@ -9,7 +9,7 @@ from models.entities import Bus, Reservation
 from tests.factories import BusFactory, ReservationFactory
 from utils.const import BROADCAST_CHIEF_CANCEL, BROADCAST_CHIEF_SELECT_BUS
 from utils.keyboards import (
-    cancel_broadcast_chief_keyboard,
+    create_cancel_broadcast_chief_keyboard,
     create_back_keyboard,
     create_booking_cancel_keyboard,
     create_buses_keyboard,
@@ -236,7 +236,7 @@ class TestKeyboards:
 
     def test_cancel_broadcast_chief_keyboard(self):
         """Тест клавиатуры отмены рассылки шефа"""
-        keyboard = cancel_broadcast_chief_keyboard()
+        keyboard = create_cancel_broadcast_chief_keyboard()
 
         assert isinstance(keyboard, InlineKeyboardMarkup)
         assert len(keyboard.inline_keyboard) == 1

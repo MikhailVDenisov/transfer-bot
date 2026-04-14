@@ -15,7 +15,8 @@ from utils.const import (
 )
 from utils.keyboards import (
     create_chief_buses_keyboard,
-    cancel_broadcast_chief_keyboard,
+    create_cancel_broadcast_chief_keyboard,
+    create_back_keyboard,
 )
 
 logger = logging.getLogger(__name__)
@@ -98,7 +99,7 @@ class BroadcastChiefHandler(BaseHandler):
                 "Отправь сообщение для пассажиров\n"
                 "Это может быть текст, фото, видео, документ и т.д.\n"
                 "После этого я покажу предпросмотр и кнопки подтверждения",
-                reply_markup=cancel_broadcast_chief_keyboard(),
+                reply_markup=create_cancel_broadcast_chief_keyboard(),
             )
 
         except Exception:
@@ -229,7 +230,8 @@ class BroadcastChiefHandler(BaseHandler):
                 f"Рассылка завершена.\n"
                 f"Успешно: {stats.sent}\n"
                 f"Ошибок: {stats.failed}\n"
-                f"Заблокировали бота: {stats.forbidden}\n"
+                f"Заблокировали бота: {stats.forbidden}\n",
+                reply_markup=create_back_keyboard(),
             )
 
         except Exception:

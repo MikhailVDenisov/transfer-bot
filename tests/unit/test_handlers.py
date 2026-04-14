@@ -939,8 +939,9 @@ class TestBroadcastChiefHandler:
         assert "broadcast_message" not in mock_context.user_data
         replies = mock_update_with_callback.callback_query.message.reply_text.call_args_list
         assert any("Начинаю рассылку" in c.args[0] for c in replies)
-        assert any("Рассылка завершена" in c.args[0] for c in replies)
-        assert any("Успешно: 3" in c.args[0] for c in replies)
+        completion = next(c for c in replies if c.args and "Рассылка завершена" in c.args[0])
+        assert "Успешно: 3" in completion.args[0]
+        assert completion.kwargs.get("reply_markup") is not None
 
     @pytest.mark.asyncio
     async def test_broadcast_send_callback_message_id_overrides_stored_draft(

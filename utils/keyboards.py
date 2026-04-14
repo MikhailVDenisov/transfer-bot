@@ -157,7 +157,7 @@ def create_chief_buses_keyboard(
     keyboard.append([InlineKeyboardButton("Назад", callback_data="back_to_menu")])
     return InlineKeyboardMarkup(keyboard)
 
-def cancel_broadcast_chief_keyboard() -> InlineKeyboardMarkup:
+def create_cancel_broadcast_chief_keyboard() -> InlineKeyboardMarkup:
     """Создает клавиатуру с отменой рассылки"""
     keyboard = [[InlineKeyboardButton("Отмена", callback_data=BROADCAST_CHIEF_CANCEL)]]
     return InlineKeyboardMarkup(keyboard)

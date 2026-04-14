@@ -44,7 +44,7 @@ class ViewBookingHandler(BaseHandler):
             message = format_user_bookings_message(reservations, buses)
 
             # Создаем клавиатуру для отмены бронирований
-            keyboard = create_booking_cancel_keyboard(reservations, buses)
+            keyboard = create_back_keyboard()
 
             await query.edit_message_text(message, reply_markup=keyboard)
 
