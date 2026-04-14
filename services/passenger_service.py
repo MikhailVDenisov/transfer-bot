@@ -76,3 +76,8 @@ class PassengerService:
         """Проверяет, является ли пользователь администратором"""
         passenger = self.repository.get_by_username(username)
         return passenger.is_admin() if passenger else False
+
+    def is_chief(self, username: str) -> bool:
+        """Проверяет, является ли пользователь шефом автобуса"""
+        passenger = self.repository.get_by_username(username)
+        return passenger.is_chief() if passenger else False

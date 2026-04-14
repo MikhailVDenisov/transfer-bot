@@ -13,6 +13,14 @@ from handlers.info_handler import InfoHandler
 from handlers.start_handler import StartHandler
 from handlers.view_booking_handler import ViewBookingHandler
 from handlers.waiting_list_handler import WaitingListHandler
+from handlers.broadcast_chief_handler import (
+    BroadcastChiefHandler,
+)
+from utils.const import (
+    BROADCAST_CHIEF_COMMAND,
+    BROADCAST_CHIEF_SEND,
+    BROADCAST_CHIEF_CANCEL, BROADCAST_CHIEF_SELECT_BUS
+)
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +35,7 @@ class CallbackHandler:
         self.waiting_list_handler = WaitingListHandler()
         self.info_handler = InfoHandler()
         self.export_handler = ExportHandler()
+        self.broadcast_chief_handler = BroadcastChiefHandler()
 
     async def handle_callback(
         self, update: Update, context: ContextTypes.DEFAULT_TYPE
@@ -34,7 +43,7 @@ class CallbackHandler:
         """Обрабатывает callback запросы"""
         try:
             query = update.callback_query
-            await query.answer()
+            # await query.answer()
 
             callback_data = query.data
 
@@ -86,6 +95,21 @@ class CallbackHandler:
 
             elif callback_data == "export_buses":
                 await self.export_handler.export_buses(update, context)
+
+            elif callback_data == BROADCAST_CHIEF_COMMAND:
+                await self.broadcast_chief_handler.broadcast_command(update,context)
+
+            elif callback_data.startswith(BROADCAST_CHIEF_SELECT_BUS):
+                await self.broadcast_chief_handler.prepare_broadcast(
+                    update, context
+                )
+
+            elif callback_data == BROADCAST_CHIEF_SEND:
+                await self.broadcast_chief_handler.broadcast_send(update, context)
+
+            elif callback_data == BROADCAST_CHIEF_CANCEL:
+                await self.broadcast_chief_handler.broadcast_cancel(update, context)
+                await self.start_handler.handle(update, context)
 
             elif callback_data == "back_to_menu":
                 await self.start_handler.handle(update, context)

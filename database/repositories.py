@@ -57,6 +57,17 @@ class PassengerRepository:
         )
         return [Passenger.from_tuple(row) for row in results] if results else []
 
+    @staticmethod
+    def get_by_bus(bus_id:int) -> List[Passenger]:
+        """Получает пассажиров по автобусу и направлению"""
+        results = db_connection.execute_query(
+            "SELECT p.* FROM Passengers p JOIN Reservations r ON p.ID = r.PassengerID  WHERE r.BusID = ?",
+            (bus_id,),
+            fetch_all=True
+        )
+
+        return [Passenger.from_tuple(row) for row in results] if results else []
+
 
 class BusRepository:
     """Репозиторий для работы с автобусами"""
@@ -90,6 +101,16 @@ class BusRepository:
         results = db_connection.execute_query(
             "SELECT * FROM Buses WHERE Direction = ? AND (is_active = TRUE OR is_active IS NULL)",
             (direction,),
+            fetch_all=True,
+        )
+        return [Bus.from_tuple(row) for row in results] if results else []
+
+    @staticmethod
+    def get_by_chief(chief_id: int) -> List[Bus]:
+        """Получает автобусы по владельцу и направлению"""
+        results = db_connection.execute_query(
+            "SELECT b.* FROM Buses b JOIN BusOwners bo ON b.ID = bo.BusID WHERE bo.chiefID = ? AND (is_active = TRUE OR is_active IS NULL)",
+            (chief_id,),
             fetch_all=True,
         )
         return [Bus.from_tuple(row) for row in results] if results else []

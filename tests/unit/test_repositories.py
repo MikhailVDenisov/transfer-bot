@@ -124,6 +124,60 @@ class TestPassengerRepository:
         assert p2.telegram_username in usernames
         assert p3.telegram_username in usernames
 
+    def test_get_by_bus(self):
+        """Тест получения пассажиров по автобусу"""
+        # Создаем несколько пассажиров
+        from tests.factories import PassengerFactory
+
+        p1 = PassengerFactory.build()
+        p2 = PassengerFactory.build()
+        p3 = PassengerFactory.build()
+        p4 = PassengerFactory.build()
+        PassengerRepository.create(p1.telegram_username, p1.chat_id)
+        PassengerRepository.create(p2.telegram_username, p2.chat_id)
+        PassengerRepository.create(p3.telegram_username, p3.chat_id)
+        PassengerRepository.create(p4.telegram_username, p3.chat_id)
+
+        passengers = PassengerRepository.get_all()
+        assert len(passengers) == 4
+
+        from database.connection import db_connection
+        # Создаем автобус
+        db_connection.execute_query(
+            "INSERT INTO Buses (Number, Departure_Place, Destination, DepartureDate, DepartureTime, Capacity, Direction, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                "БУС-001",
+                "Москва",
+                "Переславль-Залесский",
+                "2024-01-15",
+                "10:00",
+                30,
+                "Туда",
+                True,
+            ),
+        )
+        buses = BusRepository.get_all()
+        bus = buses[0]
+
+        # Создаем бронирование
+        for passenger in passengers:
+            if passenger.id == 1 or passenger.id == 4:
+                ReservationRepository.create(passenger.id, bus.id, "Туда")
+            elif passenger.id == 3:
+                ReservationRepository.create(passenger.id, bus.id, "Сюда")
+            else:
+                ReservationRepository.create(passenger.id, 999, "Туда")
+
+        reservations = ReservationRepository.get_all()
+        assert len(reservations) == 4
+
+        # Проверяем пассажиров по автобусу и направлению
+        passengers_by_bus = PassengerRepository.get_by_bus(bus.id)
+
+        assert len(passengers_by_bus) == 3
+        usernames = [p.telegram_username for p in passengers]
+        assert p1.telegram_username in usernames
+        assert p4.telegram_username in usernames
 
 class TestBusRepository:
     """Тесты для BusRepository"""
@@ -178,6 +232,105 @@ class TestBusRepository:
         assert bus.capacity == 30
         assert bus.direction == "Туда"
         assert bus.is_active is True
+
+    def test_get_by_chief(self):
+        """Тест получения автобуса по шефу"""
+
+        from tests.factories import PassengerFactory
+
+        p1 = PassengerFactory.build()
+        p2 = PassengerFactory.build()
+        PassengerRepository.create(p1.telegram_username, p1.chat_id)
+        PassengerRepository.create(p2.telegram_username, p2.chat_id)
+
+        passengers = PassengerRepository.get_all()
+        assert len(passengers) == 2
+
+        from database.connection import db_connection
+        # Создаем автобус
+        db_connection.execute_query(
+            "INSERT INTO Buses (Number, Departure_Place, Destination, DepartureDate, DepartureTime, Capacity, Direction, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                "БУС-001",
+                "Москва",
+                "Переславль-Залесский",
+                "2024-01-15",
+                "10:00",
+                30,
+                "Туда",
+                True,
+            ),
+        )
+
+        db_connection.execute_query(
+            "INSERT INTO Buses (Number, Departure_Place, Destination, DepartureDate, DepartureTime, Capacity, Direction, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                "БУС-001",
+                "Москва",
+                "Переславль-Залесский",
+                "2024-01-15",
+                "10:00",
+                30,
+                "Сюда",
+                True,
+            ),
+        )
+
+        db_connection.execute_query(
+            "INSERT INTO Buses (Number, Departure_Place, Destination, DepartureDate, DepartureTime, Capacity, Direction, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                "БУС-002",
+                "Москва",
+                "Переславль-Залесский",
+                "2024-01-15",
+                "10:00",
+                30,
+                "Tуда",
+                True,
+            ),
+        )
+        buses = BusRepository.get_all()
+        bus1 = buses[0]
+        bus2 = buses[1]
+        bus3 = buses[2]
+
+        chief1 = passengers[0]
+        chief2 = passengers[1]
+
+        # Создаем владельцев автобуса
+        db_connection.execute_query(
+            "INSERT INTO BusOwners (BusID, ChiefID) VALUES (?, ?)",
+            (bus1.id, chief1.id),
+        )
+
+        db_connection.execute_query(
+            "INSERT INTO BusOwners (BusID, ChiefID) VALUES (?, ?)",
+            (bus2.id, chief1.id),
+        )
+
+        db_connection.execute_query(
+            "INSERT INTO BusOwners (BusID, ChiefID) VALUES (?, ?)",
+            (bus3.id, chief2.id),
+        )
+
+        owners = BusOwnerRepository.get_all()
+
+        assert len(owners) == 3
+
+        buses_by_chief1 = BusRepository.get_by_chief(chief1.id)
+
+        assert len(buses_by_chief1) == 2
+
+        buses_by_chief2 = BusRepository.get_by_chief(chief2.id)
+
+        assert len(buses_by_chief2) == 1
+
+        assert buses_by_chief1[0].number == "БУС-001"
+        assert buses_by_chief1[1].number == "БУС-001"
+
+        assert buses_by_chief2[0].number == "БУС-002"
+
+
 
 
 class TestReservationRepository:

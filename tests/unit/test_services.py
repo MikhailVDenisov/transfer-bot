@@ -2,12 +2,15 @@
 Тесты для сервисов
 """
 
-from unittest.mock import Mock, patch
+import sqlite3
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
+from telegram.error import BadRequest, Forbidden
 
 from models.entities import Bus, Passenger, Reservation, WaitingListRecord
 from services.booking_service import BookingService
+from services.broadcast_service import BroadcastService, BroadcastStats
 from services.bus_service import BusService
 from services.export_service import ExportService
 from services.passenger_service import PassengerService
@@ -537,3 +540,86 @@ class TestExportService:
 
         # Не должно вызывать исключение
         service.cleanup_temp_file("nonexistent_file.xlsx")
+
+
+class TestBroadcastService:
+    """Тесты для BroadcastService"""
+
+    def test_get_passengers_for_broadcast_excludes_chief(self):
+        """Пассажир с id chief_id исключается из списка рассылки"""
+        service = BroadcastService()
+        chief_id = 10
+        p1 = PassengerFactory.build(id=1, chat_id="111")
+        chief = PassengerFactory.build(id=10, chat_id="222")
+        p3 = PassengerFactory.build(id=3, chat_id="333")
+        mock_passengers = [p1, chief, p3]
+
+        with patch.object(
+            service.passenger_repository, "get_by_bus", return_value=mock_passengers
+        ):
+            result = service.get_passengers_for_broadcast(5, chief_id)
+
+        assert result == [p1, p3]
+
+    def test_get_passengers_for_broadcast_repository_error_returns_none(self):
+        """При ошибке SQLite возвращается None"""
+        service = BroadcastService()
+
+        with patch.object(
+            service.passenger_repository,
+            "get_by_bus",
+            side_effect=sqlite3.OperationalError("database locked"),
+        ):
+            result = service.get_passengers_for_broadcast(1, 1)
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_send_broadcast_all_success(self):
+        """Успешная рассылка всем получателям"""
+        service = BroadcastService()
+        passengers = [
+            PassengerFactory.build(chat_id="100"),
+            PassengerFactory.build(chat_id="200"),
+        ]
+        bot = Mock()
+        bot.copy_message = AsyncMock()
+
+        with patch("services.broadcast_service.asyncio.sleep", new_callable=AsyncMock):
+            counts = await service.send_broadcast(bot, passengers, 100, 42)
+
+        assert counts == BroadcastStats(2, 0, 0)
+        assert bot.copy_message.await_count == 2
+
+    @pytest.mark.asyncio
+    async def test_send_broadcast_empty_list(self):
+        """Пустой список пассажиров — нули в статистике"""
+        service = BroadcastService()
+        bot = Mock()
+        bot.copy_message = AsyncMock()
+
+        with patch("services.broadcast_service.asyncio.sleep", new_callable=AsyncMock):
+            counts = await service.send_broadcast(bot, [], 100, 1)
+
+        assert counts == BroadcastStats(0, 0, 0)
+        bot.copy_message.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_send_broadcast_counts_forbidden_bad_request_and_generic(self):
+        """Подсчёт успешных, Forbidden, BadRequest и прочих ошибок"""
+        service = BroadcastService()
+        passengers = [PassengerFactory.build() for _ in range(4)]
+        bot = Mock()
+        bot.copy_message = AsyncMock(
+            side_effect=[
+                None,
+                Forbidden("blocked"),
+                BadRequest("invalid"),
+                ValueError("other"),
+            ]
+        )
+
+        with patch("services.broadcast_service.asyncio.sleep", new_callable=AsyncMock):
+            counts = await service.send_broadcast(bot, passengers, 100, 7)
+
+        assert counts == BroadcastStats(1, 2, 1)

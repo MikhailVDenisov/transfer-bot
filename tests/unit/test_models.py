@@ -49,10 +49,22 @@ class TestPassenger:
     def test_passenger_is_admin(self):
         """Тест проверки администратора"""
         admin = PassengerFactory.build(role="admin")
+        chief = PassengerFactory.build(role="chief")
         user = PassengerFactory.build(role="user")
 
         assert admin.is_admin() is True
+        assert chief.is_admin() is False
         assert user.is_admin() is False
+
+    def test_passenger_is_chief(self):
+        """Тест проверки администратора"""
+        admin = PassengerFactory.build(role="admin")
+        chief = PassengerFactory.build(role="chief")
+        user = PassengerFactory.build(role="user")
+
+        assert admin.is_chief() is False
+        assert chief.is_chief() is True
+        assert user.is_chief() is False
 
     def test_passenger_has_fio(self):
         """Тест проверки наличия ФИО"""

@@ -36,6 +36,10 @@ class Passenger:
         """Проверяет, является ли пассажир администратором"""
         return self.role and self.role.lower() == "admin"
 
+    def is_chief(self) -> bool:
+        """Проверяет, является ли пассажир шефом автобуса"""
+        return self.role and self.role.lower() == "chief"
+
     def has_fio(self) -> bool:
         """Проверяет, заполнено ли ФИО"""
         return bool(self.fio and self.fio.strip())

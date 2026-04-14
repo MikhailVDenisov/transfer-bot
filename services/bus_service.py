@@ -68,3 +68,7 @@ class BusService:
     def get_active_buses(self) -> List[Bus]:
         """Получает только активные автобусы"""
         return self.bus_repository.get_active_buses()
+
+    def get_buses_by_chief(self, chief_id: int) -> List[Bus]:
+        """Получает автобусы по шефу"""
+        return self.bus_repository.get_by_chief(chief_id)

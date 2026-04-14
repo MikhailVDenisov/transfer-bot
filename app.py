@@ -91,6 +91,12 @@ class TransferBot:
         )
         self.application.add_handler(fio_conversation)
 
+        # Обработчик сообщения шефа в режиме рассылки
+        self.application.add_handler(MessageHandler(
+            filters.ALL & ~filters.COMMAND,
+            self.callback_handler.broadcast_chief_handler.handle_chief_message
+        ))
+
         logger.info("Обработчики настроены")
 
     async def confirm_waiting_booking(self, update, context):
