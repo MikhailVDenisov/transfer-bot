@@ -31,6 +31,9 @@ logger = logging.getLogger(__name__)
 # Состояния для ConversationHandler
 FIO, BUS_ID = range(2)
 
+# Сообщения рассылки шефа обрабатываются после группы 0 (callbacks, ConversationHandler и т.д.)
+BROADCAST_CHIEF_MESSAGE_GROUP = 1
+
 
 class TransferBot:
     """Основной класс бота"""
@@ -91,11 +94,14 @@ class TransferBot:
         )
         self.application.add_handler(fio_conversation)
 
-        # Обработчик сообщения шефа в режиме рассылки
-        self.application.add_handler(MessageHandler(
-            filters.ALL & ~filters.COMMAND,
-            self.callback_handler.broadcast_chief_handler.handle_chief_message
-        ))
+        # Обработчик сообщения шефа в режиме рассылки (отдельная группа — после основных хендлеров)
+        self.application.add_handler(
+            MessageHandler(
+                filters.ALL & ~filters.COMMAND,
+                self.callback_handler.broadcast_chief_handler.handle_chief_message,
+            ),
+            group=BROADCAST_CHIEF_MESSAGE_GROUP,
+        )
 
         logger.info("Обработчики настроены")
 

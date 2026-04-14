@@ -1,21 +1,21 @@
 import logging
+from typing import Optional
 
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
-from telegram.ext import ContextTypes, ConversationHandler
+from telegram.ext import ContextTypes
 
 from handlers.base_handler import BaseHandler
-from handlers.start_handler import StartHandler
-from services.export_service import ExportService
 from services.bus_service import BusService
 from services.broadcast_service import BroadcastService
 
 from utils.const import (
     BROADCAST_CHIEF_SEND,
-    BROADCAST_CHIEF_CANCEL
+    BROADCAST_CHIEF_CANCEL,
+    BROADCAST_CHIEF_SELECT_BUS,
 )
 from utils.keyboards import (
     create_chief_buses_keyboard,
-    cancel_broadcast_chief_keyboard, create_back_keyboard,
+    cancel_broadcast_chief_keyboard,
 )
 
 logger = logging.getLogger(__name__)
@@ -27,10 +27,8 @@ class BroadcastChiefHandler(BaseHandler):
 
     def __init__(self):
         super().__init__()
-        self.export_service = ExportService()
         self.bus_service = BusService()
         self.broadcast_service = BroadcastService()
-        self.start_handler = StartHandler()
 
 
     async def broadcast_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -39,7 +37,7 @@ class BroadcastChiefHandler(BaseHandler):
 
             # Проверяем права
             if not passenger or not passenger.is_chief():
-                await self.broadcast_error(update, context, "Доступ запрещен")
+                await self._broadcast_error(update, context, "Доступ запрещен")
                 return
 
             query = update.callback_query
@@ -48,7 +46,7 @@ class BroadcastChiefHandler(BaseHandler):
             buses = self.bus_service.get_buses_by_chief(passenger.id)
 
             if len(buses) < 1:
-                await self.broadcast_error(update, context, "На вас не назначено ни одного автобуса")
+                await self._broadcast_error(update, context, "На вас не назначено ни одного автобуса")
                 return
 
             keyboard = create_chief_buses_keyboard(buses)
@@ -56,9 +54,9 @@ class BroadcastChiefHandler(BaseHandler):
                 "Выберите автобус:", reply_markup=keyboard
             )
 
-        except Exception as e:
-            logger.error(f"Ошибка в broadcast_command: {str(e)}")
-            await self.broadcast_error(update, context, "Ошибка запуска рассылки")
+        except Exception:
+            logger.exception("Ошибка в broadcast_command")
+            await self._broadcast_error(update, context, "Ошибка запуска рассылки")
 
 
     async def prepare_broadcast(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -67,15 +65,28 @@ class BroadcastChiefHandler(BaseHandler):
 
             # Проверяем права
             if not passenger or not passenger.is_chief():
-                await self.broadcast_error(update, context, "Доступ запрещен")
+                await self._broadcast_error(update, context, "Доступ запрещен")
                 return
 
             query = update.callback_query
+
+            bus_id = self._parse_chief_broadcast_bus_id(query.data)
+            if bus_id is None:
+                await self._broadcast_error(
+                    update, context, "Некорректный выбор автобуса"
+                )
+                return
+
+            chief_buses = self.bus_service.get_buses_by_chief(passenger.id)
+            if not any(b.id == bus_id for b in chief_buses):
+                await self._broadcast_error(
+                    update, context, "Этот автобус вам не назначен"
+                )
+                return
+
             await query.answer()
 
-            # Получаем bus_id
-            data = query.data
-            context.user_data["bus_id"] =  int(data.split("_", 4)[4])
+            context.user_data["bus_id"] = bus_id
 
             #Устанавливаем признак, что пользователь в режиме рассылки
             context.user_data["broadcast_mode"] = True
@@ -90,23 +101,24 @@ class BroadcastChiefHandler(BaseHandler):
                 reply_markup=cancel_broadcast_chief_keyboard(),
             )
 
-        except Exception as e:
-            logger.error(f"Ошибка в prepare_broadcast: {str(e)}")
-            await self.broadcast_error(update, context, "Ошибка подготовки рассылки")
+        except Exception:
+            logger.exception("Ошибка в prepare_broadcast")
+            await self._broadcast_error(update, context, "Ошибка подготовки рассылки")
 
 
     async def handle_chief_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         try:
+            if not context.user_data.get("broadcast_mode"):
+                return
+
+            if not update.message:
+                return
+
             passenger = await self.get_or_create_passenger(update)
 
             # Проверяем права
             if not passenger or not passenger.is_chief():
-                await self.broadcast_error(update, context, "Доступ запрещен")
-                return
-
-            if not context.user_data.get("broadcast_mode"):
-                logger.warning(f"handle_chief_message broadcast_mode: {context.user_data.get("broadcast_mode")}")
-                await self.broadcast_error(update, context, "Ошибка при создании сообщения")
+                await self._broadcast_error(update, context, "Доступ запрещен")
                 return
 
             message = update.message
@@ -135,9 +147,9 @@ class BroadcastChiefHandler(BaseHandler):
                 message_id=message.message_id,
                 reply_markup=keyboard,
             )
-        except Exception as e:
-            logger.error(f"Ошибка в handle_chief_message: {str(e)}")
-            await self.send_error_message(update, "Ошибка создания сообщения")
+        except Exception:
+            logger.exception("Ошибка в handle_chief_message")
+            await self._broadcast_error(update, context, "Ошибка создания сообщения")
 
 
     async def broadcast_send(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -146,12 +158,15 @@ class BroadcastChiefHandler(BaseHandler):
 
             # Проверяем права
             if not passenger or not passenger.is_chief():
-                await self.broadcast_error(update, context, "Доступ запрещен")
+                await self._broadcast_error(update, context, "Доступ запрещен")
                 return
 
             if not context.user_data.get("broadcast_mode"):
-                logger.warning(f"broadcast_send broadcast_mode: {context.user_data.get("broadcast_mode")}")
-                await self.broadcast_error(update, context,"Ошибка рассылки")
+                logger.warning(
+                    "broadcast_send: режим рассылки выключен, keys=%s",
+                    list(context.user_data.keys()),
+                )
+                await self._broadcast_error(update, context, "Ошибка рассылки")
                 return
 
             query = update.callback_query
@@ -161,7 +176,7 @@ class BroadcastChiefHandler(BaseHandler):
             payload = context.user_data.get("broadcast_message")
 
             if not payload:
-                await self.broadcast_error(update, context,"Не найдено сообщение для рассылки")
+                await self._broadcast_error(update, context, "Не найдено сообщение для рассылки")
                 return
 
             source_chat_id = payload["chat_id"]
@@ -173,7 +188,7 @@ class BroadcastChiefHandler(BaseHandler):
             passengers_for_broadcast = self.broadcast_service.get_passengers_for_broadcast(bus_id, passenger.id)
 
             if not passengers_for_broadcast or len(passengers_for_broadcast) == 0:
-                await self.broadcast_error(update, context,"Не найдено пассажиров для рассылки")
+                await self._broadcast_error(update, context, "Не найдено пассажиров для рассылки")
                 return
 
             await query.edit_message_reply_markup(reply_markup=None)
@@ -189,7 +204,7 @@ class BroadcastChiefHandler(BaseHandler):
 
             context.user_data["broadcast_mode"] = False
             context.user_data.pop("broadcast_message", None)
-            context.user_data.pop("chat_id", None)
+            context.user_data.pop("bus_id", None)
 
             await query.message.reply_text(
                 f"Рассылка завершена.\n"
@@ -197,29 +212,45 @@ class BroadcastChiefHandler(BaseHandler):
                 f"Ошибок: {stats.failed}\n"
                 f"Заблокировали бота: {stats.forbidden}\n"
             )
-        except Exception as e:
-            logger.error(f"Ошибка в broadcast_send: {str(e)}")
-            await self.send_error_message(update, "Ошибка рассылки")
+
+        except Exception:
+            logger.exception("Ошибка в broadcast_send")
+            await self._broadcast_error(update, context, "Ошибка рассылки")
 
 
     async def broadcast_cancel(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         passenger = await self.get_or_create_passenger(update)
         # Проверяем права
         if not passenger or not passenger.is_chief():
-            await self.broadcast_error(update, context,"Доступ запрещен")
+            await self._broadcast_error(update, context, "Доступ запрещен")
             return
-
-        query = update.callback_query
-        await query.answer()
 
         context.user_data.pop("broadcast_mode", False)
         context.user_data.pop("broadcast_message",None)
         context.user_data.pop("bus_id", None)
 
+        query = update.callback_query
 
-    async def broadcast_error(self, update: Update, context: ContextTypes.DEFAULT_TYPE, error_message: str) -> None:
+        await query.edit_message_reply_markup(reply_markup=None)
+        await query.message.reply_text("Рассылка отменена.")
+
+
+    async def _broadcast_error(self, update: Update, context: ContextTypes.DEFAULT_TYPE, error_message: str) -> None:
         await self.send_error_message(update, error_message)
 
         context.user_data.pop("broadcast_mode", False)
         context.user_data.pop("broadcast_message", None)
         context.user_data.pop("bus_id", None)
+
+    @staticmethod
+    def _parse_chief_broadcast_bus_id(callback_data: Optional[str]) -> Optional[int]:
+        """Извлекает id автобуса из callback_data кнопки выбора автобуса для рассылки шефа."""
+        if not callback_data or not callback_data.startswith(BROADCAST_CHIEF_SELECT_BUS):
+            return None
+        suffix = callback_data[len(BROADCAST_CHIEF_SELECT_BUS):]
+        if not suffix or not suffix.isdigit():
+            return None
+        bus_id = int(suffix)
+        if bus_id < 1:
+            return None
+        return bus_id
