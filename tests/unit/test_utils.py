@@ -7,10 +7,13 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 from models.entities import Bus, Reservation
 from tests.factories import BusFactory, ReservationFactory
+from utils.const import BROADCAST_CHIEF_CANCEL, BROADCAST_CHIEF_SELECT_BUS
 from utils.keyboards import (
+    cancel_broadcast_chief_keyboard,
     create_back_keyboard,
     create_booking_cancel_keyboard,
     create_buses_keyboard,
+    create_chief_buses_keyboard,
     create_confirm_booking_keyboard,
     create_directions_keyboard,
     create_main_menu_keyboard,
@@ -192,6 +195,54 @@ class TestKeyboards:
         assert len(keyboard.inline_keyboard[0]) == 1
         assert keyboard.inline_keyboard[0][0].text == "Подтвердить бронь"
         assert keyboard.inline_keyboard[0][0].callback_data == "select_bus_1"
+
+    def test_create_chief_buses_keyboard(self):
+        """Тест создания клавиатуры с автобусами для рассылки шефа"""
+        buses = [
+            BusFactory.build(id=1, number="БУС-001", destination="Переславль"),
+            BusFactory.build(id=2, number="БУС-002", destination="Москва"),
+        ]
+
+        keyboard = create_chief_buses_keyboard(buses)
+
+        assert isinstance(keyboard, InlineKeyboardMarkup)
+        assert len(keyboard.inline_keyboard) == 3  # 2 автобуса + «Назад»
+
+        button_texts = [
+            button.text for row in keyboard.inline_keyboard for button in row
+        ]
+        assert any("БУС-001" in text for text in button_texts)
+        assert any("Переславль" in text for text in button_texts)
+        assert any("БУС-002" in text for text in button_texts)
+        assert any("Москва" in text for text in button_texts)
+        assert "Назад" in button_texts
+
+        assert keyboard.inline_keyboard[0][0].callback_data == (
+            f"{BROADCAST_CHIEF_SELECT_BUS}1"
+        )
+        assert keyboard.inline_keyboard[1][0].callback_data == (
+            f"{BROADCAST_CHIEF_SELECT_BUS}2"
+        )
+        assert keyboard.inline_keyboard[2][0].callback_data == "back_to_menu"
+
+    def test_create_chief_buses_keyboard_empty(self):
+        """Тест клавиатуры шефа при отсутствии автобусов — только «Назад»"""
+        keyboard = create_chief_buses_keyboard([])
+
+        assert isinstance(keyboard, InlineKeyboardMarkup)
+        assert len(keyboard.inline_keyboard) == 1
+        assert keyboard.inline_keyboard[0][0].text == "Назад"
+        assert keyboard.inline_keyboard[0][0].callback_data == "back_to_menu"
+
+    def test_cancel_broadcast_chief_keyboard(self):
+        """Тест клавиатуры отмены рассылки шефа"""
+        keyboard = cancel_broadcast_chief_keyboard()
+
+        assert isinstance(keyboard, InlineKeyboardMarkup)
+        assert len(keyboard.inline_keyboard) == 1
+        assert len(keyboard.inline_keyboard[0]) == 1
+        assert keyboard.inline_keyboard[0][0].text == "Отмена"
+        assert keyboard.inline_keyboard[0][0].callback_data == BROADCAST_CHIEF_CANCEL
 
 
 class TestMessages:

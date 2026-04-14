@@ -19,7 +19,7 @@ from handlers.waiting_list_handler import WaitingListHandler
 from models.entities import Bus, Passenger, Reservation
 from services.broadcast_service import BroadcastStats
 from tests.factories import BusFactory, PassengerFactory, ReservationFactory
-from utils.const import BROADCAST_CHIEF_SELECT_BUS
+from utils.const import BROADCAST_CHIEF_SELECT_BUS, BROADCAST_CHIEF_SEND
 
 
 class TestStartHandler:
@@ -744,7 +744,7 @@ class TestBroadcastChiefHandler:
             mock_context,
             "Некорректный выбор автобуса",
         )
-        mock_update_with_callback.callback_query.answer.assert_not_called()
+        mock_update_with_callback.callback_query.answer.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_prepare_broadcast_bus_not_assigned_to_chief(
@@ -771,7 +771,7 @@ class TestBroadcastChiefHandler:
             mock_context,
             "Этот автобус вам не назначен",
         )
-        mock_update_with_callback.callback_query.answer.assert_not_called()
+        mock_update_with_callback.callback_query.answer.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_handle_chief_message_no_broadcast_mode(
@@ -813,6 +813,8 @@ class TestBroadcastChiefHandler:
         assert copy_kw["from_chat_id"] == 555
         assert copy_kw["message_id"] == 77
         assert copy_kw["reply_markup"] is not None
+        send_btn = copy_kw["reply_markup"].inline_keyboard[0][0]
+        assert send_btn.callback_data == f"{BROADCAST_CHIEF_SEND}_77"
 
     @pytest.mark.asyncio
     async def test_broadcast_send_no_broadcast_mode(
@@ -901,6 +903,8 @@ class TestBroadcastChiefHandler:
             "chat_id": 100,
             "message_id": 200,
         }
+        mock_update_with_callback.callback_query.data = f"{BROADCAST_CHIEF_SEND}_200"
+        mock_update_with_callback.effective_chat.id = 100
         stats = BroadcastStats(sent=3, failed=1, forbidden=0)
 
         with (
@@ -937,6 +941,48 @@ class TestBroadcastChiefHandler:
         assert any("Начинаю рассылку" in c.args[0] for c in replies)
         assert any("Рассылка завершена" in c.args[0] for c in replies)
         assert any("Успешно: 3" in c.args[0] for c in replies)
+
+    @pytest.mark.asyncio
+    async def test_broadcast_send_callback_message_id_overrides_stored_draft(
+        self, handler, mock_update_with_callback, mock_context
+    ):
+        """Кнопка «Отправить» на старом предпросмотре шлёт то сообщение, чей id в callback."""
+        mock_passenger = PassengerFactory.build(role="chief", id=5)
+        recipients = [PassengerFactory.build()]
+        mock_context.user_data["broadcast_mode"] = True
+        mock_context.user_data["bus_id"] = 1
+        mock_context.user_data["broadcast_message"] = {
+            "chat_id": 100,
+            "message_id": 999,
+        }
+        mock_update_with_callback.callback_query.data = f"{BROADCAST_CHIEF_SEND}_200"
+        mock_update_with_callback.effective_chat.id = 100
+        stats = BroadcastStats(sent=1, failed=0, forbidden=0)
+
+        with (
+            patch.object(
+                handler, "get_or_create_passenger", return_value=mock_passenger
+            ),
+            patch.object(
+                handler.broadcast_service,
+                "get_passengers_for_broadcast",
+                return_value=recipients,
+            ),
+            patch.object(
+                handler.broadcast_service,
+                "send_broadcast",
+                new_callable=AsyncMock,
+                return_value=stats,
+            ) as send_bc,
+        ):
+            await handler.broadcast_send(mock_update_with_callback, mock_context)
+
+        send_bc.assert_called_once_with(
+            mock_context.bot,
+            recipients,
+            100,
+            200,
+        )
 
     @pytest.mark.asyncio
     async def test_broadcast_cancel_forbidden(

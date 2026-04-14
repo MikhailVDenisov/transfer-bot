@@ -43,7 +43,7 @@ class CallbackHandler:
         """Обрабатывает callback запросы"""
         try:
             query = update.callback_query
-            # await query.answer()
+            await query.answer()
 
             callback_data = query.data
 
@@ -104,7 +104,9 @@ class CallbackHandler:
                     update, context
                 )
 
-            elif callback_data == BROADCAST_CHIEF_SEND:
+            elif callback_data == BROADCAST_CHIEF_SEND or callback_data.startswith(
+                f"{BROADCAST_CHIEF_SEND}_"
+            ):
                 await self.broadcast_chief_handler.broadcast_send(update, context)
 
             elif callback_data == BROADCAST_CHIEF_CANCEL:
