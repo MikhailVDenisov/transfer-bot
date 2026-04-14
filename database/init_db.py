@@ -14,8 +14,7 @@ def init_database():
     """Инициализирует базу данных и создает таблицы"""
     try:
         # Создание таблицы Passengers
-        db_connection.execute_query(
-            """
+        db_connection.execute_query("""
         CREATE TABLE IF NOT EXISTS Passengers (
             ID INTEGER PRIMARY KEY AUTOINCREMENT,
             Telegram_username TEXT UNIQUE,
@@ -25,12 +24,10 @@ def init_database():
             Comment TEXT,
             Role TEXT DEFAULT 'user'
         )
-        """
-        )
+        """)
 
         # Создание таблицы Buses
-        db_connection.execute_query(
-            """
+        db_connection.execute_query("""
         CREATE TABLE IF NOT EXISTS Buses (
             ID INTEGER PRIMARY KEY AUTOINCREMENT,
             Number TEXT,
@@ -42,12 +39,10 @@ def init_database():
             Direction TEXT,
             is_active BOOLEAN DEFAULT TRUE
         )
-        """
-        )
+        """)
 
         # Создание таблицы Reservations
-        db_connection.execute_query(
-            """
+        db_connection.execute_query("""
         CREATE TABLE IF NOT EXISTS Reservations (
             ID INTEGER PRIMARY KEY AUTOINCREMENT,
             PassengerID INTEGER,
@@ -57,12 +52,10 @@ def init_database():
             FOREIGN KEY (PassengerID) REFERENCES Passengers (ID),
             FOREIGN KEY (BusID) REFERENCES Buses (ID)
         )
-        """
-        )
+        """)
 
         # Создание таблицы WaitingList
-        db_connection.execute_query(
-            """
+        db_connection.execute_query("""
         CREATE TABLE IF NOT EXISTS WaitingList (
             ID INTEGER PRIMARY KEY AUTOINCREMENT,
             PassengerID INTEGER,
@@ -73,12 +66,10 @@ def init_database():
             FOREIGN KEY (PassengerID) REFERENCES Passengers (ID),
             FOREIGN KEY (BusID) REFERENCES Buses (ID)
         )
-        """
-        )
+        """)
 
         # Создание таблицы BusOwners
-        db_connection.execute_query(
-            """
+        db_connection.execute_query("""
         CREATE TABLE IF NOT EXISTS BusOwners (
             ID INTEGER PRIMARY KEY AUTOINCREMENT,
             BusID INTEGER,
@@ -86,8 +77,7 @@ def init_database():
             FOREIGN KEY (BusID) REFERENCES Buses (ID),
             FOREIGN KEY (ChiefID) REFERENCES Passengers (ID)
         )
-        """
-        )
+        """)
 
         for stmt in (
             "CREATE INDEX IF NOT EXISTS idx_buses_direction_is_active ON Buses (Direction, is_active)",

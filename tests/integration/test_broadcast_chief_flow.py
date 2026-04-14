@@ -9,21 +9,19 @@
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
-
 from telegram import CallbackQuery, Chat, Message, Update, User
 from telegram.ext import ContextTypes
 
 import database.connection
+from handlers.broadcast_chief_handler import BroadcastChiefHandler
 from services.broadcast_service import BroadcastService
 from services.bus_service import BusService
-from handlers.broadcast_chief_handler import BroadcastChiefHandler
 from services.passenger_service import PassengerService
 from utils.const import (
     BROADCAST_CHIEF_CANCEL,
     BROADCAST_CHIEF_SELECT_BUS,
     BROADCAST_CHIEF_SEND,
 )
-
 
 
 @pytest.mark.integration
@@ -56,7 +54,6 @@ class TestBroadcastChiefFlow:
         passenger_service = PassengerService()
         bus_service = BusService()
 
-
         from database.connection import db_connection
 
         # 1. Создаем шефа1
@@ -66,7 +63,9 @@ class TestBroadcastChiefFlow:
         )
 
         # 2. Создаем шефа2
-        other_chief, _ = passenger_service.get_or_create_passenger("other_chief", "900002")
+        other_chief, _ = passenger_service.get_or_create_passenger(
+            "other_chief", "900002"
+        )
         db_connection.execute_query(
             "UPDATE Passengers SET Role = ? WHERE ID = ?", ("chief", other_chief.id)
         )
@@ -94,6 +93,7 @@ class TestBroadcastChiefFlow:
         broadcast_service = BroadcastService()
 
         from database.connection import db_connection
+
         # 1. Создаем шефа
         chief, _ = passenger_service.get_or_create_passenger("chief_bc", "900010")
         db_connection.execute_query(
@@ -231,6 +231,7 @@ class TestBroadcastChiefFlow:
         assert bot.copy_message.await_count == 2
         chat_ids = {c.kwargs["chat_id"] for c in bot.copy_message.await_args_list}
         assert chat_ids == {p1.chat_id, p2.chat_id}
+
 
 @pytest.mark.integration
 class TestBroadcastChiefHandlerIntegration:
@@ -374,7 +375,10 @@ class TestBroadcastChiefHandlerIntegration:
         # Сначала отвечаем на callback (убираем «часики»), затем показываем причину отказа
         query.answer.assert_awaited_once()
         query.edit_message_text.assert_awaited_once()
-        assert "не назначено ни одного автобуса" in query.edit_message_text.await_args.args[0]
+        assert (
+            "не назначено ни одного автобуса"
+            in query.edit_message_text.await_args.args[0]
+        )
 
     @pytest.mark.asyncio
     async def test_broadcast_command_chief_sees_bus_keyboard(self, temp_db):
@@ -417,7 +421,9 @@ class TestBroadcastChiefHandlerIntegration:
 
         query.answer.assert_awaited_once()
         query.edit_message_text.assert_awaited_once()
-        assert "Некорректный выбор автобуса" in query.edit_message_text.await_args.args[0]
+        assert (
+            "Некорректный выбор автобуса" in query.edit_message_text.await_args.args[0]
+        )
 
     @pytest.mark.asyncio
     async def test_prepare_broadcast_bus_id_zero_rejected(self, temp_db):
@@ -432,7 +438,9 @@ class TestBroadcastChiefHandlerIntegration:
         await handler.prepare_broadcast(update, ctx)
 
         query.answer.assert_awaited_once()
-        assert "Некорректный выбор автобуса" in query.edit_message_text.await_args.args[0]
+        assert (
+            "Некорректный выбор автобуса" in query.edit_message_text.await_args.args[0]
+        )
 
     @pytest.mark.asyncio
     async def test_prepare_broadcast_bus_not_owned_by_chief(self, temp_db):
@@ -479,7 +487,6 @@ class TestBroadcastChiefHandlerIntegration:
         assert ctx.user_data["broadcast_mode"] is True
         assert ctx.user_data["broadcast_message"] is None
 
-
     @pytest.mark.asyncio
     async def test_handle_chief_message_denied_for_non_chief_in_mode(self, temp_db):
         """Режим рассылки True, но пользователь в БД не шеф — ошибка в обычное сообщение."""
@@ -521,7 +528,9 @@ class TestBroadcastChiefHandlerIntegration:
         """Отправка по кнопке без активного режима — ошибка и сброс user_data через _broadcast_error."""
         self._make_chief_in_db("chief_send1", "920090")
         handler = BroadcastChiefHandler()
-        update, query = self._callback_update("chief_send1", 920090, BROADCAST_CHIEF_SEND)
+        update, query = self._callback_update(
+            "chief_send1", 920090, BROADCAST_CHIEF_SEND
+        )
         ctx = self._context()
         ctx.user_data["broadcast_message"] = {"chat_id": 1, "message_id": 2}
 
@@ -535,7 +544,9 @@ class TestBroadcastChiefHandlerIntegration:
         """Режим есть, payload сообщения не сохранён — просим подготовить сообщение заново."""
         self._make_chief_in_db("chief_send2", "920091")
         handler = BroadcastChiefHandler()
-        update, query = self._callback_update("chief_send2", 920091, BROADCAST_CHIEF_SEND)
+        update, query = self._callback_update(
+            "chief_send2", 920091, BROADCAST_CHIEF_SEND
+        )
         ctx = self._context()
         ctx.user_data["broadcast_mode"] = True
         ctx.user_data["bus_id"] = 1
@@ -543,7 +554,10 @@ class TestBroadcastChiefHandlerIntegration:
         await handler.broadcast_send(update, ctx)
 
         query.answer.assert_awaited_once()
-        assert "Не найдено сообщение для рассылки" in query.edit_message_text.await_args.args[0]
+        assert (
+            "Не найдено сообщение для рассылки"
+            in query.edit_message_text.await_args.args[0]
+        )
 
     @pytest.mark.asyncio
     async def test_broadcast_send_no_passengers_on_bus_integration(self, temp_db):
@@ -566,7 +580,10 @@ class TestBroadcastChiefHandlerIntegration:
         await handler.broadcast_send(update, ctx)
 
         # Реальный get_passengers_for_broadcast вернёт [] без Reservations
-        assert "Не найдено пассажиров для рассылки" in query.edit_message_text.await_args.args[0]
+        assert (
+            "Не найдено пассажиров для рассылки"
+            in query.edit_message_text.await_args.args[0]
+        )
 
     @pytest.mark.asyncio
     async def test_broadcast_send_success_calls_real_broadcast_service(self, temp_db):
@@ -653,4 +670,6 @@ class TestBroadcastChiefHandlerIntegration:
         await handler.prepare_broadcast(update, ctx)
 
         query.answer.assert_awaited_once()
-        assert "Некорректный выбор автобуса" in query.edit_message_text.await_args.args[0]
+        assert (
+            "Некорректный выбор автобуса" in query.edit_message_text.await_args.args[0]
+        )

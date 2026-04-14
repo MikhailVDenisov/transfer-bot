@@ -58,12 +58,12 @@ class PassengerRepository:
         return [Passenger.from_tuple(row) for row in results] if results else []
 
     @staticmethod
-    def get_by_bus(bus_id:int) -> List[Passenger]:
+    def get_by_bus(bus_id: int) -> List[Passenger]:
         """Получает пассажиров по автобусу и направлению"""
         results = db_connection.execute_query(
             "SELECT p.* FROM Passengers p JOIN Reservations r ON p.ID = r.PassengerID  WHERE r.BusID = ?",
             (bus_id,),
-            fetch_all=True
+            fetch_all=True,
         )
 
         return [Passenger.from_tuple(row) for row in results] if results else []

@@ -8,13 +8,15 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 from models.entities import Bus, Reservation
 from utils.const import (
+    BROADCAST_CHIEF_CANCEL,
     BROADCAST_CHIEF_COMMAND,
     BROADCAST_CHIEF_SELECT_BUS,
-    BROADCAST_CHIEF_CANCEL
 )
 
 
-def create_main_menu_keyboard(is_admin: bool = False, is_chief: bool = False ) -> InlineKeyboardMarkup:
+def create_main_menu_keyboard(
+    is_admin: bool = False, is_chief: bool = False
+) -> InlineKeyboardMarkup:
     """Создает главное меню"""
     keyboard = [
         [InlineKeyboardButton("Записаться на автобус", callback_data="book_bus")],
@@ -27,7 +29,12 @@ def create_main_menu_keyboard(is_admin: bool = False, is_chief: bool = False ) -
     # Добавляем кнопку отправить сообщение только для шефа
     if is_chief:
         keyboard.append(
-            [InlineKeyboardButton("Отправить сообщение моим пассажирам", callback_data=BROADCAST_CHIEF_COMMAND)]
+            [
+                InlineKeyboardButton(
+                    "Отправить сообщение моим пассажирам",
+                    callback_data=BROADCAST_CHIEF_COMMAND,
+                )
+            ]
         )
 
     # Добавляем кнопку выгрузки только для администраторов
@@ -137,6 +144,7 @@ def create_confirm_booking_keyboard(bus_id: int) -> InlineKeyboardMarkup:
     ]
     return InlineKeyboardMarkup(keyboard)
 
+
 def create_chief_buses_keyboard(
     buses: List[Bus],
 ) -> InlineKeyboardMarkup:
@@ -144,18 +152,18 @@ def create_chief_buses_keyboard(
     keyboard = []
 
     for bus in buses:
-            keyboard.append(
-                [
-                    InlineKeyboardButton(
-                        f"Автобус №{bus.number}, направление - {bus.destination}",
-                        callback_data=f"{BROADCAST_CHIEF_SELECT_BUS}{bus.id}",
-                    )
-                ]
-            )
-
+        keyboard.append(
+            [
+                InlineKeyboardButton(
+                    f"Автобус №{bus.number}, направление - {bus.destination}",
+                    callback_data=f"{BROADCAST_CHIEF_SELECT_BUS}{bus.id}",
+                )
+            ]
+        )
 
     keyboard.append([InlineKeyboardButton("Назад", callback_data="back_to_menu")])
     return InlineKeyboardMarkup(keyboard)
+
 
 def create_cancel_broadcast_chief_keyboard() -> InlineKeyboardMarkup:
     """Создает клавиатуру с отменой рассылки"""

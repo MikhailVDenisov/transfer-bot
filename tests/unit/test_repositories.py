@@ -142,6 +142,7 @@ class TestPassengerRepository:
         assert len(passengers) == 4
 
         from database.connection import db_connection
+
         # Создаем автобус
         db_connection.execute_query(
             "INSERT INTO Buses (Number, Departure_Place, Destination, DepartureDate, DepartureTime, Capacity, Direction, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
@@ -178,6 +179,7 @@ class TestPassengerRepository:
         usernames = [p.telegram_username for p in passengers]
         assert p1.telegram_username in usernames
         assert p4.telegram_username in usernames
+
 
 class TestBusRepository:
     """Тесты для BusRepository"""
@@ -247,6 +249,7 @@ class TestBusRepository:
         assert len(passengers) == 2
 
         from database.connection import db_connection
+
         # Создаем автобус
         db_connection.execute_query(
             "INSERT INTO Buses (Number, Departure_Place, Destination, DepartureDate, DepartureTime, Capacity, Direction, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
@@ -329,8 +332,6 @@ class TestBusRepository:
         assert buses_by_chief1[1].number == "БУС-001"
 
         assert buses_by_chief2[0].number == "БУС-002"
-
-
 
 
 class TestReservationRepository:

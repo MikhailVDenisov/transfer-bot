@@ -8,18 +8,19 @@ from telegram import Update
 from telegram.ext import ContextTypes
 
 from handlers.booking_handler import BookingHandler
+from handlers.broadcast_chief_handler import (
+    BroadcastChiefHandler,
+)
 from handlers.export_handler import ExportHandler
 from handlers.info_handler import InfoHandler
 from handlers.start_handler import StartHandler
 from handlers.view_booking_handler import ViewBookingHandler
 from handlers.waiting_list_handler import WaitingListHandler
-from handlers.broadcast_chief_handler import (
-    BroadcastChiefHandler,
-)
 from utils.const import (
+    BROADCAST_CHIEF_CANCEL,
     BROADCAST_CHIEF_COMMAND,
+    BROADCAST_CHIEF_SELECT_BUS,
     BROADCAST_CHIEF_SEND,
-    BROADCAST_CHIEF_CANCEL, BROADCAST_CHIEF_SELECT_BUS
 )
 
 logger = logging.getLogger(__name__)
@@ -97,12 +98,10 @@ class CallbackHandler:
                 await self.export_handler.export_buses(update, context)
 
             elif callback_data == BROADCAST_CHIEF_COMMAND:
-                await self.broadcast_chief_handler.broadcast_command(update,context)
+                await self.broadcast_chief_handler.broadcast_command(update, context)
 
             elif callback_data.startswith(BROADCAST_CHIEF_SELECT_BUS):
-                await self.broadcast_chief_handler.prepare_broadcast(
-                    update, context
-                )
+                await self.broadcast_chief_handler.prepare_broadcast(update, context)
 
             elif callback_data == BROADCAST_CHIEF_SEND or callback_data.startswith(
                 f"{BROADCAST_CHIEF_SEND}_"

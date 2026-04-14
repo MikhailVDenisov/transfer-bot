@@ -20,5 +20,3 @@ from utils.const import (
     BROADCAST_CHIEF_SELECT_BUS,
     BROADCAST_CHIEF_SEND,
 )
-
-

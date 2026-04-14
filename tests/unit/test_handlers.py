@@ -751,7 +751,9 @@ class TestBroadcastChiefHandler:
         self, handler, mock_update_with_callback, mock_context
     ):
         mock_passenger = PassengerFactory.build(role="chief", id=1)
-        mock_update_with_callback.callback_query.data = f"{BROADCAST_CHIEF_SELECT_BUS}42"
+        mock_update_with_callback.callback_query.data = (
+            f"{BROADCAST_CHIEF_SELECT_BUS}42"
+        )
 
         with (
             patch.object(
@@ -760,7 +762,9 @@ class TestBroadcastChiefHandler:
             patch.object(
                 handler.bus_service,
                 "get_buses_by_chief",
-                return_value=[BusFactory.build(id=7, number="7", destination="Обратно")],
+                return_value=[
+                    BusFactory.build(id=7, number="7", destination="Обратно")
+                ],
             ),
             patch.object(handler, "_broadcast_error", new_callable=AsyncMock) as err,
         ):
@@ -937,9 +941,13 @@ class TestBroadcastChiefHandler:
         )
         assert mock_context.user_data.get("broadcast_mode") is False
         assert "broadcast_message" not in mock_context.user_data
-        replies = mock_update_with_callback.callback_query.message.reply_text.call_args_list
+        replies = (
+            mock_update_with_callback.callback_query.message.reply_text.call_args_list
+        )
         assert any("Начинаю рассылку" in c.args[0] for c in replies)
-        completion = next(c for c in replies if c.args and "Рассылка завершена" in c.args[0])
+        completion = next(
+            c for c in replies if c.args and "Рассылка завершена" in c.args[0]
+        )
         assert "Успешно: 3" in completion.args[0]
         assert completion.kwargs.get("reply_markup") is not None
 
