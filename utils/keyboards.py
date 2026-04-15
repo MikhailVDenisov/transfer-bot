@@ -127,9 +127,9 @@ def create_waiting_list_keyboard(buses: List[Bus]) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(keyboard)
 
 
-def create_back_keyboard() -> InlineKeyboardMarkup:
+def create_back_keyboard(text: str = "Назад") -> InlineKeyboardMarkup:
     """Создает простую клавиатуру с кнопкой 'Назад'"""
-    keyboard = [[InlineKeyboardButton("Назад", callback_data="back_to_menu")]]
+    keyboard = [[InlineKeyboardButton(text, callback_data="back_to_menu")]]
     return InlineKeyboardMarkup(keyboard)
 
 

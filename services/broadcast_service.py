@@ -8,6 +8,7 @@ from telegram.error import BadRequest, Forbidden
 
 from database.repositories import PassengerRepository
 from models.entities import Passenger
+from utils.keyboards import create_back_keyboard
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +57,7 @@ class BroadcastService:
                     chat_id=passenger.chat_id,
                     from_chat_id=source_chat_id,
                     message_id=source_message_id,
+                    reply_markup=create_back_keyboard("Меню"),
                 )
                 sent_count += 1
 
@@ -66,9 +68,11 @@ class BroadcastService:
                 forbidden_count += 1
 
             except BadRequest:
+                logger.exception("send_broadcast bad request")
                 failed_count += 1
 
             except Exception:
+                logger.exception("send_broadcast exception")
                 failed_count += 1
 
         return BroadcastStats(sent_count, failed_count, forbidden_count)
