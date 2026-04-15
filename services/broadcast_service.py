@@ -32,9 +32,7 @@ class BroadcastService:
     ) -> List[Passenger] | None:
         try:
             passengers = self.passenger_repository.get_by_bus(bus_id)
-            result = list(filter(lambda p: p.id != chief_id, passengers))
-
-            return result
+            return [p for p in passengers if p.id != chief_id]
 
         except sqlite3.Error:
             logger.error(
@@ -44,7 +42,12 @@ class BroadcastService:
             return None
 
     async def send_broadcast(
-        self, bot: Bot, passengers: List[Passenger], source_chat_id, source_message_id
+        self,
+        bot: Bot,
+        passengers: List[Passenger],
+        source_chat_id,
+        source_message_id,
+        preview_message,
     ) -> BroadcastStats:
 
         sent_count = 0
@@ -53,11 +56,16 @@ class BroadcastService:
 
         for passenger in list(passengers):
             try:
+
+                await bot.send_message(
+                    chat_id=passenger.chat_id,
+                    text=preview_message,
+                )
                 await bot.copy_message(
                     chat_id=passenger.chat_id,
                     from_chat_id=source_chat_id,
                     message_id=source_message_id,
-                    reply_markup=create_back_keyboard("Меню"),
+                    reply_markup=create_back_keyboard("Вернуться в меню"),
                 )
                 sent_count += 1
 

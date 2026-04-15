@@ -2,7 +2,7 @@ import logging
 from typing import Optional
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram.ext import ContextTypes
+from telegram.ext import CallbackContext, ContextTypes
 
 from handlers.base_handler import BaseHandler
 from services.broadcast_service import BroadcastService
@@ -43,6 +43,8 @@ class BroadcastChiefHandler(BaseHandler):
             query = update.callback_query
             await query.answer()
 
+            self.clear_context(context)
+
             buses = self.bus_service.get_buses_by_chief(passenger.id)
 
             if len(buses) < 1:
@@ -80,13 +82,18 @@ class BroadcastChiefHandler(BaseHandler):
                 return
 
             chief_buses = self.bus_service.get_buses_by_chief(passenger.id)
-            if not any(b.id == bus_id for b in chief_buses):
+            bus_matching = [b for b in chief_buses if b.id == bus_id]
+            if not bus_matching:
                 await self._broadcast_error(
                     update, context, "Этот автобус вам не назначен"
                 )
                 return
+            bus = bus_matching[0]
 
             context.user_data["bus_id"] = bus_id
+            context.user_data["bus_description"] = (
+                f"№{bus.number}, направление - {bus.destination}"
+            )
 
             # Устанавливаем признак, что пользователь в режиме рассылки
             context.user_data["broadcast_mode"] = True
@@ -228,6 +235,9 @@ class BroadcastChiefHandler(BaseHandler):
                 )
                 return
 
+            bus_description = context.user_data.get("bus_description")
+            preview_message = f"Сообщение от @{passenger.telegram_username} - шефа автобуса {bus_description} "
+
             await query.edit_message_reply_markup(reply_markup=None)
             await query.message.reply_text("Начинаю рассылку...")
 
@@ -237,11 +247,10 @@ class BroadcastChiefHandler(BaseHandler):
                 passengers_for_broadcast,
                 source_chat_id,
                 source_message_id,
+                preview_message,
             )
 
-            context.user_data["broadcast_mode"] = False
-            context.user_data.pop("broadcast_message", None)
-            context.user_data.pop("bus_id", None)
+            self.clear_context(context)
 
             await query.message.reply_text(
                 f"Рассылка завершена.\n"
@@ -268,9 +277,7 @@ class BroadcastChiefHandler(BaseHandler):
             await self._broadcast_error(update, context, "Доступ запрещен")
             return
 
-        context.user_data.pop("broadcast_mode", False)
-        context.user_data.pop("broadcast_message", None)
-        context.user_data.pop("bus_id", None)
+        self.clear_context(context)
 
         query = update.callback_query
 
@@ -282,9 +289,13 @@ class BroadcastChiefHandler(BaseHandler):
     ) -> None:
         await self.send_error_message(update, error_message)
 
-        context.user_data.pop("broadcast_mode", False)
+        self.clear_context(context)
+
+    def clear_context(self, context: CallbackContext) -> None:
+        context.user_data.pop("broadcast_mode", None)
         context.user_data.pop("broadcast_message", None)
         context.user_data.pop("bus_id", None)
+        context.user_data.pop("bus_description", None)
 
     @staticmethod
     def _parse_bus_id(callback_data: Optional[str]) -> Optional[int]:

@@ -2,7 +2,7 @@
 Тесты для обработчиков
 """
 
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import ANY, AsyncMock, Mock, patch
 
 import pytest
 from telegram import CallbackQuery, Chat, Message, Update, User
@@ -938,8 +938,9 @@ class TestBroadcastChiefHandler:
             recipients,
             100,
             200,
+            ANY,
         )
-        assert mock_context.user_data.get("broadcast_mode") is False
+        assert "broadcast_mode" not in mock_context.user_data
         assert "broadcast_message" not in mock_context.user_data
         replies = (
             mock_update_with_callback.callback_query.message.reply_text.call_args_list
@@ -991,6 +992,7 @@ class TestBroadcastChiefHandler:
             recipients,
             100,
             200,
+            ANY,
         )
 
     @pytest.mark.asyncio

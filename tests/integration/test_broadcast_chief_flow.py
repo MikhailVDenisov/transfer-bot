@@ -218,11 +218,16 @@ class TestBroadcastChiefFlow:
         # 5. Получаем пассажиров для рассылки
         targets = broadcast_service.get_passengers_for_broadcast(bus_id, chief.id)
         bot = Mock()
+        bot.send_message = AsyncMock()
         bot.copy_message = AsyncMock()
 
         # 6. Отправляем рассылку
         stats = await broadcast_service.send_broadcast(
-            bot, targets, source_chat_id=999, source_message_id=100
+            bot,
+            targets,
+            999,
+            100,
+            "Превью для пассажиров",
         )
 
         assert stats.sent == 2
@@ -311,6 +316,7 @@ class TestBroadcastChiefHandlerIntegration:
         ctx = Mock(spec=ContextTypes.DEFAULT_TYPE)
         ctx.user_data = {}
         ctx.bot = Mock()
+        ctx.bot.send_message = AsyncMock()
         ctx.bot.copy_message = AsyncMock()
         return ctx
 
@@ -620,7 +626,7 @@ class TestBroadcastChiefHandlerIntegration:
         final = query.message.reply_text.await_args_list[-1].args[0]
         assert "Рассылка завершена" in final
         assert "Успешно: 1" in final
-        assert ctx.user_data.get("broadcast_mode") is False
+        assert "broadcast_mode" not in ctx.user_data
         assert "broadcast_message" not in ctx.user_data
         assert "bus_id" not in ctx.user_data
 

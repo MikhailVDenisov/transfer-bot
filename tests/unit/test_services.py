@@ -583,10 +583,11 @@ class TestBroadcastService:
             PassengerFactory.build(chat_id="200"),
         ]
         bot = Mock()
+        bot.send_message = AsyncMock()
         bot.copy_message = AsyncMock()
 
         with patch("services.broadcast_service.asyncio.sleep", new_callable=AsyncMock):
-            counts = await service.send_broadcast(bot, passengers, 100, 42)
+            counts = await service.send_broadcast(bot, passengers, 100, 42, "preview")
 
         assert counts == BroadcastStats(2, 0, 0)
         assert bot.copy_message.await_count == 2
@@ -596,10 +597,11 @@ class TestBroadcastService:
         """Пустой список пассажиров — нули в статистике"""
         service = BroadcastService()
         bot = Mock()
+        bot.send_message = AsyncMock()
         bot.copy_message = AsyncMock()
 
         with patch("services.broadcast_service.asyncio.sleep", new_callable=AsyncMock):
-            counts = await service.send_broadcast(bot, [], 100, 1)
+            counts = await service.send_broadcast(bot, [], 100, 1, "preview")
 
         assert counts == BroadcastStats(0, 0, 0)
         bot.copy_message.assert_not_called()
@@ -610,6 +612,7 @@ class TestBroadcastService:
         service = BroadcastService()
         passengers = [PassengerFactory.build() for _ in range(4)]
         bot = Mock()
+        bot.send_message = AsyncMock()
         bot.copy_message = AsyncMock(
             side_effect=[
                 None,
@@ -620,6 +623,6 @@ class TestBroadcastService:
         )
 
         with patch("services.broadcast_service.asyncio.sleep", new_callable=AsyncMock):
-            counts = await service.send_broadcast(bot, passengers, 100, 7)
+            counts = await service.send_broadcast(bot, passengers, 100, 7, "preview")
 
         assert counts == BroadcastStats(1, 2, 1)
