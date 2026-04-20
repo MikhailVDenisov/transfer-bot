@@ -125,10 +125,6 @@ def validate_passport_number(passport_number: str) -> Tuple[bool, str]:
     if not passport_number:
         return False, "Серия и номер паспорта не могут быть пустыми"
 
-    normalized_value = passport_number.strip()
-    if not re.fullmatch(r"\d{4} \d{6}", normalized_value):
-        return False, "Серия и номер паспорта должны быть в формате 1111 111111"
-
     return True, ""
 
 

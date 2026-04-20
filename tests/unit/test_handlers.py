@@ -123,12 +123,18 @@ class TestBookingHandler:
         self, handler, mock_update_with_callback, mock_context
     ):
         """Тест успешного показа направлений"""
+        mock_passenger = PassengerFactory.build()
         mock_directions = ["Туда", "Обратно"]
 
-        with patch.object(
-            handler.bus_service,
-            "get_available_directions",
-            return_value=mock_directions,
+        with (
+            patch.object(
+                handler, "get_or_create_passenger", return_value=mock_passenger
+            ),
+            patch.object(
+                handler.bus_service,
+                "get_available_directions",
+                return_value=mock_directions,
+            ),
         ):
             await handler.show_directions(mock_update_with_callback, mock_context)
 
@@ -140,8 +146,15 @@ class TestBookingHandler:
         self, handler, mock_update_with_callback, mock_context
     ):
         """Тест показа направлений когда их нет"""
-        with patch.object(
-            handler.bus_service, "get_available_directions", return_value=[]
+        mock_passenger = PassengerFactory.build()
+
+        with (
+            patch.object(
+                handler, "get_or_create_passenger", return_value=mock_passenger
+            ),
+            patch.object(
+                handler.bus_service, "get_available_directions", return_value=[]
+            ),
         ):
             await handler.show_directions(mock_update_with_callback, mock_context)
 

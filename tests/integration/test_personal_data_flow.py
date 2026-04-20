@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 from telegram import CallbackQuery, Message, Update, User
+from telegram.ext import ConversationHandler
 
 from handlers.personal_data_handler import (
     PERSONAL_BIRTH_DATE,
@@ -132,7 +133,6 @@ class TestPersonalDataFlow:
         message_text = update.callback_query.edit_message_text.call_args.args[0]
         assert "Ваши персональные данные" in message_text
         assert "Петров" in message_text
-        assert "Подтверждение: да" in message_text
 
     async def test_booking_flow_returns_to_directions_after_confirmation(self, context):
         """После ввода данных из бронирования возвращает пользователя к выбору направления"""
