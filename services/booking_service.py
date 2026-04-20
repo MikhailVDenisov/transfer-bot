@@ -66,6 +66,10 @@ class BookingService:
         """Получает бронирования пользователя"""
         return self.reservation_repository.get_by_passenger(passenger.id)
 
+    def has_active_bookings(self, passenger: Passenger) -> bool:
+        """Проверяет, есть ли у пользователя активные бронирования"""
+        return bool(self.get_user_bookings(passenger))
+
     def cancel_booking(self, reservation_id: int, passenger: Passenger) -> bool:
         """
         Отменяет бронирование

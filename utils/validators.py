@@ -2,7 +2,32 @@
 Валидаторы для проверки данных
 """
 
+import re
+from datetime import datetime
 from typing import Tuple
+
+
+def validate_name_part(
+    value: str, field_name: str, optional: bool = False
+) -> Tuple[bool, str]:
+    """Валидирует часть ФИО"""
+    if not value:
+        return (True, "") if optional else (False, f"{field_name} не может быть пустым")
+
+    value = value.strip()
+    if not value:
+        return (True, "") if optional else (False, f"{field_name} не может быть пустым")
+
+    if len(value) < 2:
+        return False, f"{field_name} должно содержать не менее 2 символов"
+
+    if len(value) > 50:
+        return False, f"{field_name} не может содержать более 50 символов"
+
+    if not all(c.isalpha() or c in " -" for c in value):
+        return False, f"{field_name} может содержать только буквы, пробелы и дефисы"
+
+    return True, ""
 
 
 def validate_fio(fio: str) -> Tuple[bool, str]:
@@ -49,12 +74,16 @@ def validate_phone(phone: str) -> Tuple[bool, str]:
         Tuple[bool, str]: (валидно_ли, сообщение_об_ошибке)
     """
     if not phone:
-        return True, ""  # Телефон не обязателен
+        return False, "Номер телефона не может быть пустым"
 
     phone = phone.strip()
+    if not all(c.isdigit() or c == "+" for c in phone):
+        return False, "Номер телефона может содержать только цифры и символ +"
 
-    # Удаляем все символы кроме цифр и +
-    clean_phone = "".join(c for c in phone if c.isdigit() or c == "+")
+    if phone.count("+") > 1 or ("+" in phone and not phone.startswith("+")):
+        return False, "Номер телефона может содержать только цифры и символ +"
+
+    clean_phone = phone
 
     if len(clean_phone) < 10:
         return False, "Номер телефона слишком короткий"
@@ -67,12 +96,77 @@ def validate_phone(phone: str) -> Tuple[bool, str]:
     elif clean_phone.startswith("7") and len(clean_phone) == 11:
         return True, ""
     elif clean_phone.startswith("9") and len(clean_phone) == 10:
-        return True, ""  # Мобильные номера без кода страны
+        return True, ""
 
     if len(clean_phone) > 15:
         return False, "Номер телефона слишком длинный"
 
     return True, ""
+
+
+def validate_birth_date(birth_date: str) -> Tuple[bool, str]:
+    """Валидирует дату рождения в формате дд.мм.гггг"""
+    if not birth_date:
+        return False, "Дата рождения не может быть пустой"
+
+    try:
+        parsed_date = datetime.strptime(birth_date.strip(), "%d.%m.%Y")
+    except ValueError:
+        return False, "Дата рождения должна быть в формате дд.мм.гггг"
+
+    if parsed_date.date() >= datetime.now().date():
+        return False, "Дата рождения должна быть раньше текущей даты"
+
+    return True, ""
+
+
+def validate_passport_number(passport_number: str) -> Tuple[bool, str]:
+    """Валидирует серию и номер паспорта"""
+    if not passport_number:
+        return False, "Серия и номер паспорта не могут быть пустыми"
+
+    normalized_value = passport_number.strip()
+    if not re.fullmatch(r"\d{4} \d{6}", normalized_value):
+        return False, "Серия и номер паспорта должны быть в формате 1111 111111"
+
+    return True, ""
+
+
+def validate_citizenship(citizenship: str) -> Tuple[bool, str]:
+    """Валидирует гражданство как текстовое поле"""
+    normalized_value = normalize_citizenship(citizenship)
+
+    if normalized_value == "РФ":
+        return True, ""
+
+    if not normalized_value.strip():
+        return False, "Гражданство не может быть пустым"
+
+    if len(normalized_value) < 2:
+        return False, "Гражданство должно содержать не менее 2 символов"
+
+    if len(normalized_value) > 50:
+        return False, "Гражданство не может содержать более 50 символов"
+
+    if not all(c.isalpha() or c in " -" for c in normalized_value):
+        return (
+            False,
+            "Гражданство должно быть текстом и может содержать только буквы, пробелы и дефисы",
+        )
+
+    return True, ""
+
+
+def normalize_citizenship(citizenship: str) -> str:
+    """Приводит гражданство к сохраняемому виду"""
+    if not citizenship:
+        return "РФ"
+
+    normalized_value = citizenship.strip()
+    if normalized_value in {"рф", "РФ", "россия", "Россия"}:
+        return "РФ"
+
+    return normalized_value
 
 
 def validate_username(username: str) -> Tuple[bool, str]:

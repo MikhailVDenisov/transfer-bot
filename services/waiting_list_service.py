@@ -86,7 +86,7 @@ class WaitingListService:
             for wait in waiting_records:
                 if (
                     wait.is_waiting()
-                    and not wait.notification_sent()
+                    and not wait.is_notification_sent()
                     and wait.request_time
                 ):
 
@@ -128,13 +128,13 @@ class WaitingListService:
                     )
 
         except Exception as e:
-            logger.error(f"Ошибка в process_waiting_list: {str(e)}")
+            logger.exception("Ошибка в process_waiting_list")
 
     def _should_reset_notification(
         self, wait: WaitingListRecord, current_time: datetime
     ) -> bool:
         """Проверяет, нужно ли сбросить статус уведомления"""
-        if not wait.request_time or not wait.notification_sent():
+        if not wait.request_time or not wait.is_notification_sent():
             return False
 
         try:

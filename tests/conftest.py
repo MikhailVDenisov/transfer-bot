@@ -38,7 +38,14 @@ def in_memory_db():
         FIO TEXT,
         Phone TEXT,
         Comment TEXT,
-        Role TEXT DEFAULT 'user'
+        Role TEXT DEFAULT 'user',
+        PassportNumber TEXT,
+        Citizenship TEXT,
+        LastName TEXT,
+        FirstName TEXT,
+        Patronymic TEXT,
+        BirthDate TEXT,
+        PersonalDataConfirmed BOOLEAN DEFAULT FALSE
     )
     """)
 

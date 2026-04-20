@@ -300,38 +300,3 @@ class TestBookingFlow:
         assert len(directions) == 2
         assert "Туда" in directions
         assert "Обратно" in directions
-
-    def test_passenger_fio_management(self, temp_db):
-        """Тест управления ФИО пассажиров"""
-        # Создаем сервис
-        passenger_service = PassengerService()
-
-        # 1. Создаем пассажира без ФИО
-        passenger, created = passenger_service.get_or_create_passenger(
-            "test_user", "123456789"
-        )
-        assert created is True
-        assert passenger.fio is None
-
-        # 2. Проверяем, что ФИО не заполнено
-        has_fio, passenger_check = passenger_service.check_user_fio("test_user")
-        assert has_fio is False
-        assert passenger_check.fio is None
-
-        # 3. Обновляем ФИО
-        success = passenger_service.update_fio("test_user", "Иванов Иван Иванович")
-        assert success is True
-
-        # 4. Проверяем, что ФИО обновлено
-        has_fio_after, passenger_after = passenger_service.check_user_fio("test_user")
-        assert has_fio_after is True
-        assert passenger_after.fio == "Иванов Иван Иванович"
-
-        # 5. Пытаемся обновить на невалидное ФИО
-        success_invalid = passenger_service.update_fio("test_user", "Ив")
-        assert success_invalid is False
-
-        # 6. Проверяем, что ФИО не изменилось
-        has_fio_final, passenger_final = passenger_service.check_user_fio("test_user")
-        assert has_fio_final is True
-        assert passenger_final.fio == "Иванов Иван Иванович"

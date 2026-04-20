@@ -19,6 +19,17 @@ from config.settings import TELEGRAM_TOKEN, WAITING_LIST_CHECK_INTERVAL
 from database.init_db import init_database
 from handlers.booking_handler import BookingHandler
 from handlers.callback_handler import CallbackHandler
+from handlers.personal_data_handler import (
+    PERSONAL_BIRTH_DATE,
+    PERSONAL_CITIZENSHIP,
+    PERSONAL_CONFIRM,
+    PERSONAL_FIRST_NAME,
+    PERSONAL_LAST_NAME,
+    PERSONAL_PASSPORT,
+    PERSONAL_PATRONYMIC,
+    PERSONAL_PHONE,
+    PersonalDataHandler,
+)
 from handlers.start_handler import StartHandler
 from services.waiting_list_service import WaitingListService
 
@@ -27,9 +38,6 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
 )
 logger = logging.getLogger(__name__)
-
-# Состояния для ConversationHandler
-FIO, BUS_ID = range(2)
 
 # Сообщения рассылки шефа обрабатываются после группы 0 (callbacks, ConversationHandler и т.д.)
 BROADCAST_CHIEF_MESSAGE_GROUP = 1
@@ -43,6 +51,7 @@ class TransferBot:
         self.start_handler = StartHandler()
         self.callback_handler = CallbackHandler()
         self.booking_handler = BookingHandler()
+        self.personal_data_handler = PersonalDataHandler()
         self.waiting_list_service = WaitingListService()
 
     async def post_init(self, application: Application):
@@ -66,6 +75,84 @@ class TransferBot:
         # Обработчик команды /start
         self.application.add_handler(CommandHandler("start", self.start_handler.handle))
 
+        # ConversationHandler для ввода персональных данных
+        personal_data_conversation = ConversationHandler(
+            entry_points=[
+                CallbackQueryHandler(
+                    self.personal_data_handler.show_personal_data,
+                    pattern="^personal_data$",
+                ),
+                CallbackQueryHandler(
+                    self.personal_data_handler.start_flow,
+                    pattern="^personal_data_from_booking$",
+                ),
+                CallbackQueryHandler(
+                    self.personal_data_handler.start_flow,
+                    pattern="^personal_data_edit$",
+                ),
+            ],
+            states={
+                PERSONAL_LAST_NAME: [
+                    MessageHandler(
+                        filters.TEXT & ~filters.COMMAND,
+                        self.personal_data_handler.handle_last_name,
+                    )
+                ],
+                PERSONAL_FIRST_NAME: [
+                    MessageHandler(
+                        filters.TEXT & ~filters.COMMAND,
+                        self.personal_data_handler.handle_first_name,
+                    )
+                ],
+                PERSONAL_PATRONYMIC: [
+                    MessageHandler(
+                        filters.TEXT & ~filters.COMMAND,
+                        self.personal_data_handler.handle_patronymic,
+                    )
+                ],
+                PERSONAL_PHONE: [
+                    MessageHandler(
+                        filters.TEXT & ~filters.COMMAND,
+                        self.personal_data_handler.handle_phone,
+                    )
+                ],
+                PERSONAL_BIRTH_DATE: [
+                    MessageHandler(
+                        filters.TEXT & ~filters.COMMAND,
+                        self.personal_data_handler.handle_birth_date,
+                    )
+                ],
+                PERSONAL_PASSPORT: [
+                    MessageHandler(
+                        filters.TEXT & ~filters.COMMAND,
+                        self.personal_data_handler.handle_passport,
+                    )
+                ],
+                PERSONAL_CITIZENSHIP: [
+                    MessageHandler(
+                        filters.TEXT & ~filters.COMMAND,
+                        self.personal_data_handler.handle_citizenship,
+                    )
+                ],
+                PERSONAL_CONFIRM: [
+                    CallbackQueryHandler(
+                        self.personal_data_handler.confirm_personal_data,
+                        pattern="^personal_data_confirm_save$",
+                    )
+                ],
+            },
+            fallbacks=[
+                CommandHandler("cancel", self.personal_data_handler.cancel),
+                CommandHandler("start", self.personal_data_handler.restart_to_menu),
+                CallbackQueryHandler(
+                    self.personal_data_handler.back_to_menu,
+                    pattern="^back_to_menu$",
+                ),
+                CallbackQueryHandler(self.personal_data_handler.handoff_callback),
+            ],
+        )
+        self.application.add_handler(personal_data_conversation)
+
         # Обработчик callback запросов
         self.application.add_handler(
             CallbackQueryHandler(self.callback_handler.handle_callback)
@@ -78,21 +165,6 @@ class TransferBot:
 
         # Обработчик команды /wait для добавления в лист ожидания
         self.application.add_handler(CommandHandler("wait", self.add_to_waiting_list))
-
-        # ConversationHandler для ввода ФИО
-        fio_conversation = ConversationHandler(
-            entry_points=[],  # Входные точки будут добавлены в callback_handler
-            states={
-                FIO: [
-                    MessageHandler(
-                        filters.TEXT & ~filters.COMMAND,
-                        self.booking_handler.handle_fio_input,
-                    )
-                ],
-            },
-            fallbacks=[CommandHandler("cancel", self.booking_handler.cancel_fio_input)],
-        )
-        self.application.add_handler(fio_conversation)
 
         # Обработчик сообщения шефа в режиме рассылки (отдельная группа — после основных хендлеров)
         self.application.add_handler(

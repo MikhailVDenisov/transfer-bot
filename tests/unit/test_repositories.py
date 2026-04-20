@@ -82,27 +82,6 @@ class TestPassengerRepository:
         )
         assert updated_passenger.chat_id == "987654321"
 
-    def test_update_fio(self):
-        """Тест обновления ФИО"""
-        # Создаем пассажира
-        from tests.factories import PassengerFactory
-
-        test_passenger = PassengerFactory.build()
-        passenger = PassengerRepository.create(
-            test_passenger.telegram_username, test_passenger.chat_id
-        )
-
-        # Обновляем ФИО
-        PassengerRepository.update_fio(
-            test_passenger.telegram_username, "Иванов Иван Иванович"
-        )
-
-        # Проверяем обновление
-        updated_passenger = PassengerRepository.get_by_username(
-            test_passenger.telegram_username
-        )
-        assert updated_passenger.fio == "Иванов Иван Иванович"
-
     def test_get_all_passengers(self):
         """Тест получения всех пассажиров"""
         # Создаем несколько пассажиров

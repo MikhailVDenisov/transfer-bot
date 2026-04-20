@@ -4,7 +4,13 @@
 
 from typing import List, Optional
 
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import (
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    KeyboardButton,
+    ReplyKeyboardMarkup,
+    ReplyKeyboardRemove,
+)
 
 from models.entities import Bus, Reservation
 from utils.const import (
@@ -20,6 +26,7 @@ def create_main_menu_keyboard(
     """Создает главное меню"""
     keyboard = [
         [InlineKeyboardButton("Записаться на автобус", callback_data="book_bus")],
+        [InlineKeyboardButton("Персональные данные", callback_data="personal_data")],
         [InlineKeyboardButton("Посмотреть свою бронь", callback_data="view_booking")],
         [InlineKeyboardButton("Отменить запись", callback_data="cancel_booking")],
         [InlineKeyboardButton("Как добраться?", callback_data="how_to_get_there")],
@@ -131,6 +138,49 @@ def create_back_keyboard(text: str = "Назад") -> InlineKeyboardMarkup:
     """Создает простую клавиатуру с кнопкой 'Назад'"""
     keyboard = [[InlineKeyboardButton(text, callback_data="back_to_menu")]]
     return InlineKeyboardMarkup(keyboard)
+
+
+def create_personal_data_prompt_keyboard(
+    callback_data: str = "personal_data",
+) -> InlineKeyboardMarkup:
+    """Создает клавиатуру для перехода к вводу персональных данных"""
+    keyboard = [
+        [InlineKeyboardButton("Заполнить данные", callback_data=callback_data)],
+        [InlineKeyboardButton("Назад", callback_data="back_to_menu")],
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+
+def create_personal_data_view_keyboard() -> InlineKeyboardMarkup:
+    """Создает клавиатуру просмотра персональных данных"""
+    keyboard = [
+        [InlineKeyboardButton("Редактировать", callback_data="personal_data_edit")],
+        [InlineKeyboardButton("Назад", callback_data="back_to_menu")],
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+
+def create_citizenship_keyboard() -> ReplyKeyboardMarkup:
+    """Создает клавиатуру с гражданством по умолчанию"""
+    keyboard = [[KeyboardButton("РФ")]]
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
+
+
+def create_personal_data_confirm_keyboard() -> InlineKeyboardMarkup:
+    """Создает клавиатуру подтверждения персональных данных"""
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                "Подтвердить данные", callback_data="personal_data_confirm_save"
+            )
+        ]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+
+def create_reply_keyboard_remove() -> ReplyKeyboardRemove:
+    """Убирает reply-клавиатуру"""
+    return ReplyKeyboardRemove()
 
 
 def create_confirm_booking_keyboard(bus_id: int) -> InlineKeyboardMarkup:

@@ -77,53 +77,24 @@ class TestPassengerService:
             mock_update.assert_called_once_with("test_user", "123456789")
             assert created is False
 
-    def test_check_user_fio_with_fio(self):
-        """Тест проверки ФИО у пользователя с заполненным ФИО"""
+    def test_update_personal_data_success(self):
+        """Тест успешного сохранения персональных данных"""
         service = PassengerService()
-        mock_passenger = PassengerFactory.build(fio="Иванов Иван Иванович")
+        data = {
+            "last_name": "Иванов",
+            "first_name": "Иван",
+            "patronymic": "Иванович",
+            "phone": "+79001234567",
+            "birth_date": "01.01.1990",
+            "passport_number": "1234 567890",
+            "citizenship": "РФ",
+        }
 
-        with patch.object(
-            service.repository, "get_by_username", return_value=mock_passenger
-        ):
-            has_fio, passenger = service.check_user_fio("test_user")
+        with patch.object(service.repository, "update_personal_data") as mock_update:
+            result = service.update_personal_data("test_user", data)
 
-            assert has_fio is True
-            assert passenger == mock_passenger
-
-    def test_check_user_fio_without_fio(self):
-        """Тест проверки ФИО у пользователя без ФИО"""
-        service = PassengerService()
-        mock_passenger = PassengerFactory.build(fio="")
-
-        with patch.object(
-            service.repository, "get_by_username", return_value=mock_passenger
-        ):
-            has_fio, passenger = service.check_user_fio("test_user")
-
-            assert has_fio is False
-            assert passenger == mock_passenger
-
-    def test_update_fio_success(self):
-        """Тест успешного обновления ФИО"""
-        service = PassengerService()
-
-        with patch.object(service.repository, "update_fio") as mock_update:
-            result = service.update_fio("test_user", "Иванов Иван Иванович")
-
-            assert result is True
-            mock_update.assert_called_once_with("test_user", "Иванов Иван Иванович")
-
-    def test_update_fio_invalid(self):
-        """Тест обновления ФИО с невалидными данными"""
-        service = PassengerService()
-
-        # Слишком короткое ФИО
-        result = service.update_fio("test_user", "Ив")
-        assert result is False
-
-        # Пустое ФИО
-        result = service.update_fio("test_user", "")
-        assert result is False
+            assert result == (True, "")
+            mock_update.assert_called_once()
 
     def test_is_admin_true(self):
         """Тест проверки администратора"""
@@ -323,6 +294,19 @@ class TestBookingService:
             reservations = service.get_user_bookings(mock_passenger)
 
             assert reservations == mock_reservations
+
+    def test_has_active_bookings(self):
+        """Тест проверки активных бронирований"""
+        service = BookingService()
+        mock_passenger = PassengerFactory.build()
+        mock_reservations = [ReservationFactory.build()]
+
+        with patch.object(
+            service.reservation_repository,
+            "get_by_passenger",
+            return_value=mock_reservations,
+        ):
+            assert service.has_active_bookings(mock_passenger) is True
 
     def test_cancel_booking_success(self):
         """Тест успешной отмены бронирования"""

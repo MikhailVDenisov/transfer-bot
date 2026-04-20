@@ -15,7 +15,14 @@ class Passenger:
     telegram_username: Optional[str] = None
     chat_id: Optional[str] = None
     fio: Optional[str] = None
+    last_name: Optional[str] = None
+    first_name: Optional[str] = None
+    patronymic: Optional[str] = None
     phone: Optional[str] = None
+    birth_date: Optional[str] = None
+    passport_number: Optional[str] = None
+    citizenship: Optional[str] = None
+    personal_data_confirmed: bool = False
     comment: Optional[str] = None
     role: str = "user"
 
@@ -30,6 +37,13 @@ class Passenger:
             phone=data[4],
             comment=data[5],
             role=data[6] if len(data) > 6 else "user",
+            passport_number=data[7] if len(data) > 7 else None,
+            citizenship=data[8] if len(data) > 8 else None,
+            last_name=data[9] if len(data) > 9 else None,
+            first_name=data[10] if len(data) > 10 else None,
+            patronymic=data[11] if len(data) > 11 else None,
+            birth_date=data[12] if len(data) > 12 else None,
+            personal_data_confirmed=bool(data[13]) if len(data) > 13 else False,
         )
 
     def is_admin(self) -> bool:
@@ -40,9 +54,21 @@ class Passenger:
         """Проверяет, является ли пассажир шефом автобуса"""
         return self.role and self.role.lower() == "chief"
 
-    def has_fio(self) -> bool:
-        """Проверяет, заполнено ли ФИО"""
-        return bool(self.fio and self.fio.strip())
+    def has_personal_data(self) -> bool:
+        """Проверяет, заполнены ли обязательные персональные данные"""
+        return all(
+            [
+                self.last_name and self.last_name.strip(),
+                self.first_name and self.first_name.strip(),
+                self.phone and self.phone.strip(),
+                self.birth_date and self.birth_date.strip(),
+                self.passport_number and self.passport_number.strip(),
+            ]
+        )
+
+    def has_confirmed_personal_data(self) -> bool:
+        """Проверяет, заполнены и подтверждены ли персональные данные"""
+        return self.has_personal_data() and self.personal_data_confirmed
 
 
 @dataclass

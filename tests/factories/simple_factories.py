@@ -28,10 +28,17 @@ class SimplePassengerFactory:
                 "telegram_username", f"test_user_{_username_counter}"
             ),
             "chat_id": kwargs.get("chat_id", str(_chat_id_counter)),
+            "last_name": kwargs.get("last_name", fake.last_name()),
+            "first_name": kwargs.get("first_name", fake.first_name()),
+            "patronymic": kwargs.get("patronymic", fake.middle_name()),
             "fio": kwargs.get(
                 "fio", f"{fake.last_name()} {fake.first_name()} {fake.middle_name()}"
             ),
             "phone": kwargs.get("phone", fake.phone_number()),
+            "birth_date": kwargs.get("birth_date", fake.date(pattern="%d.%m.%Y")),
+            "passport_number": kwargs.get("passport_number", "1234 567890"),
+            "citizenship": kwargs.get("citizenship", "РФ"),
+            "personal_data_confirmed": kwargs.get("personal_data_confirmed", True),
             "comment": kwargs.get("comment", fake.text(max_nb_chars=100)),
             "role": kwargs.get("role", "user"),  # По умолчанию user для тестов
         }

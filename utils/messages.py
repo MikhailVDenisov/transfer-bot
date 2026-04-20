@@ -5,7 +5,7 @@
 from typing import List
 
 from config.settings import MESSAGES
-from models.entities import Bus, Reservation
+from models.entities import Bus, Passenger, Reservation
 
 
 def format_bus_info(bus: Bus, booked_count: int) -> str:
@@ -67,3 +67,32 @@ def format_user_bookings_message(
             message += format_booking_info(res, bus) + "\n"
 
     return message
+
+
+def format_personal_data_confirmation_message(personal_data: dict) -> str:
+    """Форматирует сообщение для подтверждения персональных данных"""
+    patronymic = personal_data.get("patronymic") or "не указано"
+    return (
+        "Проверьте введенные данные:\n\n"
+        f"Фамилия: {personal_data.get('last_name')}\n"
+        f"Имя: {personal_data.get('first_name')}\n"
+        f"Отчество: {patronymic}\n"
+        f"Телефон: {personal_data.get('phone')}\n"
+        f"Дата рождения: {personal_data.get('birth_date')}\n"
+        f"Паспорт: {personal_data.get('passport_number')}\n"
+        f"Гражданство: {personal_data.get('citizenship')}"
+    )
+
+
+def format_personal_data_view_message(passenger: Passenger) -> str:
+    """Форматирует сообщение просмотра персональных данных"""
+    return (
+        "Ваши персональные данные:\n\n"
+        f"Фамилия: {passenger.last_name or 'не указано'}\n"
+        f"Имя: {passenger.first_name or 'не указано'}\n"
+        f"Отчество: {passenger.patronymic or 'не указано'}\n"
+        f"Телефон: {passenger.phone or 'не указано'}\n"
+        f"Дата рождения: {passenger.birth_date or 'не указано'}\n"
+        f"Паспорт: {passenger.passport_number or 'не указано'}\n"
+        f"Гражданство: {passenger.citizenship or 'не указано'}\n"
+    )

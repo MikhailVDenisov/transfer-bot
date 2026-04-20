@@ -10,6 +10,19 @@ from database.connection import db_connection
 logger = logging.getLogger(__name__)
 
 
+def ensure_column_exists(table_name: str, column_name: str, column_definition: str):
+    """Добавляет колонку в таблицу, если она отсутствует"""
+    columns = db_connection.execute_query(
+        f"PRAGMA table_info({table_name})", fetch_all=True
+    )
+    existing_columns = {column[1] for column in columns}
+
+    if column_name not in existing_columns:
+        db_connection.execute_query(
+            f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_definition}"
+        )
+
+
 def init_database():
     """Инициализирует базу данных и создает таблицы"""
     try:
@@ -22,9 +35,26 @@ def init_database():
             FIO TEXT,
             Phone TEXT,
             Comment TEXT,
-            Role TEXT DEFAULT 'user'
+            Role TEXT DEFAULT 'user',
+            PassportNumber TEXT,
+            Citizenship TEXT,
+            LastName TEXT,
+            FirstName TEXT,
+            Patronymic TEXT,
+            BirthDate TEXT,
+            PersonalDataConfirmed BOOLEAN DEFAULT FALSE
         )
         """)
+
+        ensure_column_exists("Passengers", "PassportNumber", "TEXT")
+        ensure_column_exists("Passengers", "Citizenship", "TEXT")
+        ensure_column_exists("Passengers", "LastName", "TEXT")
+        ensure_column_exists("Passengers", "FirstName", "TEXT")
+        ensure_column_exists("Passengers", "Patronymic", "TEXT")
+        ensure_column_exists("Passengers", "BirthDate", "TEXT")
+        ensure_column_exists(
+            "Passengers", "PersonalDataConfirmed", "BOOLEAN DEFAULT FALSE"
+        )
 
         # Создание таблицы Buses
         db_connection.execute_query("""

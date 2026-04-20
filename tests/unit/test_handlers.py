@@ -176,6 +176,20 @@ class TestBookingHandler:
             mock_update_with_callback.callback_query.edit_message_text.assert_called_once()
 
     @pytest.mark.asyncio
+    async def test_show_directions_requires_personal_data(
+        self, handler, mock_update_with_callback, mock_context
+    ):
+        """Тест запрета бронирования без персональных данных"""
+        mock_passenger = PassengerFactory.build(passport_number="")
+
+        with patch.object(
+            handler, "get_or_create_passenger", return_value=mock_passenger
+        ):
+            await handler.show_directions(mock_update_with_callback, mock_context)
+
+            mock_update_with_callback.callback_query.edit_message_text.assert_called_once()
+
+    @pytest.mark.asyncio
     async def test_confirm_booking_success(
         self, handler, mock_update_with_callback, mock_context
     ):

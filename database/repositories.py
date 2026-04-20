@@ -43,10 +43,46 @@ class PassengerRepository:
         )
 
     @staticmethod
-    def update_fio(username: str, fio: str) -> None:
-        """Обновляет ФИО пассажира"""
+    def update_personal_data(
+        username: str,
+        last_name: str,
+        first_name: str,
+        patronymic: Optional[str],
+        phone: str,
+        birth_date: str,
+        passport_number: str,
+        citizenship: str,
+    ) -> None:
+        """Обновляет персональные данные пассажира"""
+        fio_parts = [last_name.strip(), first_name.strip()]
+        if patronymic and patronymic.strip():
+            fio_parts.append(patronymic.strip())
+
         db_connection.execute_query(
-            "UPDATE Passengers SET FIO = ? WHERE Telegram_username = ?", (fio, username)
+            """
+            UPDATE Passengers
+            SET LastName = ?,
+                FirstName = ?,
+                Patronymic = ?,
+                FIO = ?,
+                Phone = ?,
+                BirthDate = ?,
+                PassportNumber = ?,
+                Citizenship = ?,
+                PersonalDataConfirmed = TRUE
+            WHERE Telegram_username = ?
+            """,
+            (
+                last_name.strip(),
+                first_name.strip(),
+                patronymic.strip() if patronymic and patronymic.strip() else None,
+                " ".join(fio_parts),
+                phone.strip(),
+                birth_date.strip(),
+                passport_number.strip(),
+                citizenship.strip(),
+                username,
+            ),
         )
 
     @staticmethod

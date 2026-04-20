@@ -3,7 +3,7 @@
 """
 
 import pytest
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup
 
 from models.entities import Bus, Reservation
 from tests.factories import BusFactory, ReservationFactory
@@ -14,9 +14,14 @@ from utils.keyboards import (
     create_buses_keyboard,
     create_cancel_broadcast_chief_keyboard,
     create_chief_buses_keyboard,
+    create_citizenship_keyboard,
     create_confirm_booking_keyboard,
     create_directions_keyboard,
     create_main_menu_keyboard,
+    create_personal_data_confirm_keyboard,
+    create_personal_data_prompt_keyboard,
+    create_personal_data_view_keyboard,
+    create_reply_keyboard_remove,
     create_waiting_list_keyboard,
 )
 from utils.messages import (
@@ -27,7 +32,13 @@ from utils.messages import (
     format_user_bookings_message,
     format_waiting_notification_message,
 )
-from utils.validators import validate_fio, validate_phone, validate_username
+from utils.validators import (
+    validate_citizenship,
+    validate_fio,
+    validate_passport_number,
+    validate_phone,
+    validate_username,
+)
 
 
 class TestKeyboards:
@@ -38,13 +49,14 @@ class TestKeyboards:
         keyboard = create_main_menu_keyboard(is_admin=False)
 
         assert isinstance(keyboard, InlineKeyboardMarkup)
-        assert len(keyboard.inline_keyboard) == 5  # 5 основных кнопок
+        assert len(keyboard.inline_keyboard) == 6  # 6 основных кнопок
 
         # Проверяем наличие основных кнопок
         button_texts = [
             button.text for row in keyboard.inline_keyboard for button in row
         ]
         assert "Записаться на автобус" in button_texts
+        assert "Персональные данные" in button_texts
         assert "Посмотреть свою бронь" in button_texts
         assert "Отменить запись" in button_texts
         assert "Как добраться?" in button_texts
@@ -56,7 +68,7 @@ class TestKeyboards:
         keyboard = create_main_menu_keyboard(is_admin=True)
 
         assert isinstance(keyboard, InlineKeyboardMarkup)
-        assert len(keyboard.inline_keyboard) == 6  # 5 основных + 1 админская
+        assert len(keyboard.inline_keyboard) == 7  # 6 основных + 1 админская
 
         # Проверяем наличие админской кнопки
         button_texts = [
@@ -185,6 +197,49 @@ class TestKeyboards:
         assert len(keyboard.inline_keyboard[0]) == 1
         assert keyboard.inline_keyboard[0][0].text == "Назад"
         assert keyboard.inline_keyboard[0][0].callback_data == "back_to_menu"
+
+    def test_create_personal_data_prompt_keyboard(self):
+        """Тест клавиатуры перехода к вводу персональных данных"""
+        keyboard = create_personal_data_prompt_keyboard("personal_data_from_booking")
+
+        assert isinstance(keyboard, InlineKeyboardMarkup)
+        assert len(keyboard.inline_keyboard) == 2
+        assert keyboard.inline_keyboard[0][0].text == "Заполнить данные"
+        assert (
+            keyboard.inline_keyboard[0][0].callback_data == "personal_data_from_booking"
+        )
+
+    def test_create_citizenship_keyboard(self):
+        """Тест клавиатуры гражданства со значением по умолчанию"""
+        keyboard = create_citizenship_keyboard()
+
+        assert isinstance(keyboard, ReplyKeyboardMarkup)
+        assert keyboard.keyboard[0][0].text == "РФ"
+
+    def test_create_personal_data_confirm_keyboard(self):
+        """Тест клавиатуры подтверждения персональных данных"""
+        keyboard = create_personal_data_confirm_keyboard()
+
+        assert isinstance(keyboard, InlineKeyboardMarkup)
+        assert keyboard.inline_keyboard[0][0].text == "Подтвердить данные"
+        assert (
+            keyboard.inline_keyboard[0][0].callback_data == "personal_data_confirm_save"
+        )
+
+    def test_create_personal_data_view_keyboard(self):
+        """Тест клавиатуры просмотра персональных данных"""
+        keyboard = create_personal_data_view_keyboard()
+
+        assert isinstance(keyboard, InlineKeyboardMarkup)
+        assert keyboard.inline_keyboard[0][0].text == "Редактировать"
+        assert keyboard.inline_keyboard[0][0].callback_data == "personal_data_edit"
+        assert keyboard.inline_keyboard[1][0].text == "Назад"
+
+    def test_create_reply_keyboard_remove(self):
+        """Тест удаления reply-клавиатуры"""
+        keyboard = create_reply_keyboard_remove()
+
+        assert keyboard is not None
 
     def test_create_confirm_booking_keyboard(self):
         """Тест создания клавиатуры для подтверждения брони"""
@@ -423,8 +478,7 @@ class TestValidators:
             "+7900123456",
             "8900123456",
             "9001234567",
-            "+7 (900) 123-45-67",
-            "",  # Телефон не обязателен
+            "+79001234567",
         ]
 
         for phone in valid_phones:
@@ -435,6 +489,16 @@ class TestValidators:
     def test_validate_phone_invalid(self):
         """Тест валидации некорректного номера телефона"""
         invalid_cases = [
+            ("", "Номер телефона не может быть пустым"),
+            (
+                "+7 (900) 123-45-67",
+                "Номер телефона может содержать только цифры и символ +",
+            ),
+            (
+                "8900-123-45-67",
+                "Номер телефона может содержать только цифры и символ +",
+            ),
+            ("8 9001234567", "Номер телефона может содержать только цифры и символ +"),
             ("123", "Номер телефона слишком короткий"),
             ("12345678901234567890", "Номер телефона слишком длинный"),
         ]
@@ -442,6 +506,52 @@ class TestValidators:
         for phone, expected_error in invalid_cases:
             is_valid, error_msg = validate_phone(phone)
             assert is_valid is False, f"Телефон '{phone}' должен быть невалидным"
+            assert expected_error in error_msg
+
+    def test_validate_passport_number_valid(self):
+        """Тест валидации корректного номера паспорта"""
+        is_valid, error_msg = validate_passport_number("1234 567890")
+
+        assert is_valid is True
+        assert error_msg == ""
+
+    def test_validate_passport_number_invalid(self):
+        """Тест валидации некорректного номера паспорта"""
+        invalid_cases = [
+            ("", "Серия и номер паспорта не могут быть пустыми"),
+            ("1234567890", "Серия и номер паспорта должны быть в формате 1111 111111"),
+            ("1234-567890", "Серия и номер паспорта должны быть в формате 1111 111111"),
+            ("123 567890", "Серия и номер паспорта должны быть в формате 1111 111111"),
+            ("1234 56789", "Серия и номер паспорта должны быть в формате 1111 111111"),
+            ("abcd efghij", "Серия и номер паспорта должны быть в формате 1111 111111"),
+        ]
+
+        for passport_number, expected_error in invalid_cases:
+            is_valid, error_msg = validate_passport_number(passport_number)
+            assert is_valid is False
+            assert expected_error in error_msg
+
+    def test_validate_citizenship_valid(self):
+        """Тест валидации корректного гражданства"""
+        valid_values = ["РФ", "Россия", "Беларусь", "Казахстан", "Нью-Зеландия"]
+
+        for citizenship in valid_values:
+            is_valid, error_msg = validate_citizenship(citizenship)
+            assert is_valid is True
+            assert error_msg == ""
+
+    def test_validate_citizenship_invalid(self):
+        """Тест валидации некорректного гражданства"""
+        invalid_cases = [
+            ("-", "Гражданство должно содержать не менее 2 символов"),
+            ("1", "Гражданство должно содержать не менее 2 символов"),
+            ("РФ123", "Гражданство должно быть текстом"),
+            ("USA!", "Гражданство должно быть текстом"),
+        ]
+
+        for citizenship, expected_error in invalid_cases:
+            is_valid, error_msg = validate_citizenship(citizenship)
+            assert is_valid is False
             assert expected_error in error_msg
 
     def test_validate_username_valid(self):
