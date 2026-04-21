@@ -58,7 +58,6 @@ def create_main_menu_keyboard(
             [InlineKeyboardButton("Выгрузить данные", callback_data="export_buses")]
         )
 
-
     return InlineKeyboardMarkup(keyboard)
 
 

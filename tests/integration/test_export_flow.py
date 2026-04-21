@@ -273,6 +273,7 @@ class TestExportFlow:
         )
 
         import asyncio
+
         import openpyxl
 
         temp_file = asyncio.run(export_service.export_personal_data_to_excel([bus.id]))
