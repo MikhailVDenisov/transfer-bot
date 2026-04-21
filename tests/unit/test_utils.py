@@ -18,6 +18,7 @@ from utils.keyboards import (
     create_confirm_booking_keyboard,
     create_directions_keyboard,
     create_main_menu_keyboard,
+    create_personal_data_export_buses_keyboard,
     create_personal_data_confirm_keyboard,
     create_personal_data_prompt_keyboard,
     create_personal_data_view_keyboard,
@@ -61,7 +62,7 @@ class TestKeyboards:
         assert "Отменить запись" in button_texts
         assert "Как добраться?" in button_texts
         assert "FAQ" in button_texts
-        assert "Выгрузить данные" not in button_texts
+        assert "Выгрузить персональные данные пассажиров" not in button_texts
 
     def test_create_main_menu_keyboard_admin(self):
         """Тест создания главного меню для администратора"""
@@ -74,7 +75,7 @@ class TestKeyboards:
         button_texts = [
             button.text for row in keyboard.inline_keyboard for button in row
         ]
-        assert "Выгрузить данные" in button_texts
+        assert "Выгрузить персональные данные пассажиров" in button_texts
 
     def test_create_directions_keyboard(self):
         """Тест создания клавиатуры с направлениями"""
@@ -298,6 +299,34 @@ class TestKeyboards:
         assert len(keyboard.inline_keyboard[0]) == 1
         assert keyboard.inline_keyboard[0][0].text == "Отмена"
         assert keyboard.inline_keyboard[0][0].callback_data == BROADCAST_CHIEF_CANCEL
+
+    def test_create_personal_data_export_buses_keyboard(self):
+        """Тест клавиатуры выбора автобусов для выгрузки персональных данных"""
+        buses = [
+            BusFactory.build(
+                id=1,
+                number="БУС-001",
+                departure_date="2024-01-15",
+                departure_time="10:00",
+            ),
+            BusFactory.build(
+                id=2,
+                number="БУС-002",
+                departure_date="2024-01-15",
+                departure_time="12:00",
+            ),
+        ]
+
+        keyboard = create_personal_data_export_buses_keyboard(buses, [2])
+
+        assert isinstance(keyboard, InlineKeyboardMarkup)
+        button_texts = [
+            button.text for row in keyboard.inline_keyboard for button in row
+        ]
+        assert "⬜ Автобус БУС-001 (2024-01-15 10:00)" in button_texts
+        assert "✅ Автобус БУС-002 (2024-01-15 12:00)" in button_texts
+        assert "Сформировать выгрузку" in button_texts
+        assert "Назад" in button_texts
 
 
 class TestMessages:

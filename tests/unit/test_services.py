@@ -472,6 +472,7 @@ class TestExportService:
         assert service.reservation_repository is not None
         assert service.passenger_repository is not None
         assert service.bus_owner_repository is not None
+        assert service.waiting_list_repository is not None
 
     @pytest.mark.asyncio
     async def test_export_buses_to_excel(self):
@@ -499,6 +500,39 @@ class TestExportService:
         ):
 
             result = await service.export_buses_to_excel()
+
+            assert result is not None
+            mock_generate.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_export_personal_data_to_excel(self):
+        """Тест экспорта персональных данных в Excel"""
+        service = ExportService()
+        mock_buses = [BusFactory.build(id=1)]
+        mock_passengers = [PassengerFactory.build(id=10)]
+        mock_reservations = [ReservationFactory.build(bus_id=1, passenger_id=10)]
+        mock_waiting_records = []
+
+        with (
+            patch.object(service.bus_repository, "get_all", return_value=mock_buses),
+            patch.object(
+                service.passenger_repository, "get_all", return_value=mock_passengers
+            ),
+            patch.object(
+                service.reservation_repository,
+                "get_all",
+                return_value=mock_reservations,
+            ),
+            patch.object(
+                service.waiting_list_repository,
+                "get_waiting_records",
+                return_value=mock_waiting_records,
+            ),
+            patch.object(
+                service, "_generate_personal_data_excel_file"
+            ) as mock_generate,
+        ):
+            result = await service.export_personal_data_to_excel([1])
 
             assert result is not None
             mock_generate.assert_called_once()

@@ -201,6 +201,110 @@ class TestExportFlow:
         # Очищаем временный файл
         export_service.cleanup_temp_file(temp_file)
 
+    def test_export_personal_data_with_waiting_list(self, temp_db):
+        """Тест выгрузки персональных данных с пассажирами и очередью"""
+        export_service = ExportService()
+
+        from database.connection import db_connection
+
+        db_connection.execute_query(
+            "INSERT INTO Buses (Number, Departure_Place, Destination, DepartureDate, DepartureTime, Capacity, Direction, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                "БУС-101",
+                "Москва",
+                "Переславль-Залесский",
+                "2024-01-15",
+                "10:00",
+                30,
+                "Туда",
+                True,
+            ),
+        )
+
+        db_connection.execute_query(
+            "INSERT INTO Passengers (Telegram_username, ChatID, Role, LastName, FirstName, Patronymic, Phone, BirthDate, PassportNumber, Citizenship, PersonalDataConfirmed) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                "user_booked",
+                "123",
+                "user",
+                "Иванов",
+                "Иван",
+                "Иванович",
+                "+79001234567",
+                "01.01.1990",
+                "1234 567890",
+                "РФ",
+                True,
+            ),
+        )
+        db_connection.execute_query(
+            "INSERT INTO Passengers (Telegram_username, ChatID, Role, LastName, FirstName, Patronymic, Phone, BirthDate, PassportNumber, Citizenship, PersonalDataConfirmed) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                "user_waiting",
+                "124",
+                "user",
+                "Петров",
+                "Петр",
+                "Петрович",
+                "+79007654321",
+                "02.02.1992",
+                "4321 098765",
+                "РФ",
+                True,
+            ),
+        )
+
+        bus = export_service.bus_repository.get_all()[0]
+        passengers = export_service.passenger_repository.get_all()
+        booked_passenger = next(
+            p for p in passengers if p.telegram_username == "user_booked"
+        )
+        waiting_passenger = next(
+            p for p in passengers if p.telegram_username == "user_waiting"
+        )
+
+        db_connection.execute_query(
+            "INSERT INTO Reservations (PassengerID, BusID, ReservationDate, Direction) VALUES (?, ?, ?, ?)",
+            (booked_passenger.id, bus.id, "2024-01-10 09:00:00", bus.direction),
+        )
+        db_connection.execute_query(
+            "INSERT INTO WaitingList (PassengerID, BusID, RequestTime, Status, NotificationSent) VALUES (?, ?, ?, ?, ?)",
+            (waiting_passenger.id, bus.id, "2024-01-10 10:00:00", "Waiting", "No"),
+        )
+
+        import asyncio
+        import openpyxl
+
+        temp_file = asyncio.run(export_service.export_personal_data_to_excel([bus.id]))
+
+        assert os.path.exists(temp_file)
+
+        wb = openpyxl.load_workbook(temp_file)
+        assert "Автобус БУС-101" in wb.sheetnames
+
+        ws = wb["Автобус БУС-101"]
+        rows = list(ws.iter_rows(values_only=True))
+
+        assert (
+            "№",
+            "Статус",
+            "Фамилия",
+            "Имя",
+            "Отчество",
+            "Телефон",
+            "Дата рождения",
+            "Паспорт",
+            "Гражданство",
+            "Telegram",
+            "Дата добавления",
+        ) in rows
+        assert any(
+            row[1] == "Пассажир" and row[2] == "Иванов" for row in rows if row[0]
+        )
+        assert any(row[1] == "Очередь" and row[2] == "Петров" for row in rows if row[0])
+
+        export_service.cleanup_temp_file(temp_file)
+
     def test_export_service_large_dataset(self, temp_db):
         """Тест экспорта с большим объемом данных"""
         export_service = ExportService()

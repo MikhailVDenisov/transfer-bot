@@ -47,8 +47,17 @@ def create_main_menu_keyboard(
     # Добавляем кнопку выгрузки только для администраторов
     if is_admin:
         keyboard.append(
+            [
+                InlineKeyboardButton(
+                    "Выгрузить персональные данные пассажиров",
+                    callback_data="export_personal_data",
+                )
+            ],
+        ),
+        keyboard.append(
             [InlineKeyboardButton("Выгрузить данные", callback_data="export_buses")]
         )
+
 
     return InlineKeyboardMarkup(keyboard)
 
@@ -218,4 +227,38 @@ def create_chief_buses_keyboard(
 def create_cancel_broadcast_chief_keyboard() -> InlineKeyboardMarkup:
     """Создает клавиатуру с отменой рассылки"""
     keyboard = [[InlineKeyboardButton("Отмена", callback_data=BROADCAST_CHIEF_CANCEL)]]
+    return InlineKeyboardMarkup(keyboard)
+
+
+def create_personal_data_export_buses_keyboard(
+    buses: List[Bus], selected_bus_ids: Optional[List[int]] = None
+) -> InlineKeyboardMarkup:
+    """Создает клавиатуру выбора автобусов для выгрузки персональных данных"""
+    selected_bus_ids = selected_bus_ids or []
+    selected_bus_ids_set = {int(bus_id) for bus_id in selected_bus_ids}
+    keyboard = []
+
+    for bus in buses:
+        is_selected = bus.id in selected_bus_ids_set
+        prefix = "✅" if is_selected else "⬜"
+        button_text = (
+            f"{prefix} Автобус {bus.number} ({bus.departure_date} {bus.departure_time})"
+        )
+        keyboard.append(
+            [
+                InlineKeyboardButton(
+                    button_text, callback_data=f"export_personal_data_bus_{bus.id}"
+                )
+            ]
+        )
+
+    keyboard.append(
+        [
+            InlineKeyboardButton(
+                "Сформировать выгрузку",
+                callback_data="export_personal_data_generate",
+            )
+        ]
+    )
+    keyboard.append([InlineKeyboardButton("Назад", callback_data="back_to_menu")])
     return InlineKeyboardMarkup(keyboard)

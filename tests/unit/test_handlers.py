@@ -526,6 +526,53 @@ class TestExportHandler:
                 "⚠️ Доступ запрещен", show_alert=True
             )
 
+    @pytest.mark.asyncio
+    async def test_show_personal_data_export_menu_admin_success(
+        self, handler, mock_update_with_callback, mock_context
+    ):
+        """Тест открытия меню выгрузки персональных данных администратором"""
+        mock_passenger = PassengerFactory.build(role="admin")
+        mock_buses = [BusFactory.build(id=1, number="БУС-001")]
+
+        with (
+            patch.object(
+                handler, "get_or_create_passenger", return_value=mock_passenger
+            ),
+            patch.object(handler.bus_service, "get_all_buses", return_value=mock_buses),
+        ):
+            await handler.show_personal_data_export_menu(
+                mock_update_with_callback, mock_context
+            )
+
+            assert mock_context.user_data["personal_data_export_bus_ids"] == []
+            mock_update_with_callback.callback_query.edit_message_text.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_export_personal_data_admin_success(
+        self, handler, mock_update_with_callback, mock_context
+    ):
+        """Тест успешной выгрузки персональных данных администратором"""
+        mock_passenger = PassengerFactory.build(role="admin")
+        mock_context.bot.send_document = AsyncMock()
+        mock_context.user_data["personal_data_export_bus_ids"] = [1]
+
+        with (
+            patch.object(
+                handler, "get_or_create_passenger", return_value=mock_passenger
+            ),
+            patch.object(
+                handler.export_service,
+                "export_personal_data_to_excel",
+                return_value="temp_file.xlsx",
+            ),
+            patch.object(handler.export_service, "cleanup_temp_file"),
+            patch("builtins.open", mock_open_file_content()),
+        ):
+            await handler.export_personal_data(mock_update_with_callback, mock_context)
+
+            mock_context.bot.send_document.assert_called_once()
+            assert "personal_data_export_bus_ids" not in mock_context.user_data
+
 
 class TestCallbackHandler:
     """Тесты для CallbackHandler"""
@@ -561,6 +608,24 @@ class TestCallbackHandler:
             await handler.handle_callback(mock_update_with_callback, mock_context)
 
             mock_show_directions.assert_called_once_with(
+                mock_update_with_callback, mock_context
+            )
+
+    @pytest.mark.asyncio
+    async def test_handle_callback_export_personal_data(
+        self, handler, mock_update_with_callback, mock_context
+    ):
+        """Тест обработки callback открытия меню выгрузки персональных данных"""
+        mock_update_with_callback.callback_query.data = "export_personal_data"
+
+        with patch.object(
+            handler.export_handler,
+            "show_personal_data_export_menu",
+            new_callable=AsyncMock,
+        ) as mock_export_menu:
+            await handler.handle_callback(mock_update_with_callback, mock_context)
+
+            mock_export_menu.assert_called_once_with(
                 mock_update_with_callback, mock_context
             )
 

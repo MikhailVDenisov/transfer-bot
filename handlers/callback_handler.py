@@ -44,7 +44,7 @@ class CallbackHandler:
         """Обрабатывает callback запросы"""
         try:
             query = update.callback_query
-            await query.answer()
+            # await query.answer()
 
             callback_data = query.data
 
@@ -96,6 +96,19 @@ class CallbackHandler:
 
             elif callback_data == "export_buses":
                 await self.export_handler.export_buses(update, context)
+
+            elif callback_data == "export_personal_data":
+                await self.export_handler.show_personal_data_export_menu(
+                    update, context
+                )
+
+            elif callback_data.startswith("export_personal_data_bus_"):
+                await self.export_handler.toggle_personal_data_export_bus(
+                    update, context
+                )
+
+            elif callback_data == "export_personal_data_generate":
+                await self.export_handler.export_personal_data(update, context)
 
             elif callback_data == BROADCAST_CHIEF_COMMAND:
                 await self.broadcast_chief_handler.broadcast_command(update, context)
