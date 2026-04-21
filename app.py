@@ -112,7 +112,7 @@ class TransferBot:
                 ],
                 PERSONAL_PHONE: [
                     MessageHandler(
-                        filters.TEXT & ~filters.COMMAND,
+                        filters.CONTACT | (filters.TEXT & ~filters.COMMAND),
                         self.personal_data_handler.handle_phone,
                     )
                 ],

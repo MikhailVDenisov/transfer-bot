@@ -11,6 +11,7 @@ from utils.keyboards import (
     create_citizenship_keyboard,
     create_personal_data_confirm_keyboard,
     create_personal_data_view_keyboard,
+    create_phone_request_keyboard,
     create_reply_keyboard_remove,
 )
 from utils.messages import (
@@ -186,7 +187,8 @@ class PersonalDataHandler(BaseHandler):
                 None,
                 MESSAGES["personal_data_phone"],
                 context.user_data["personal_data"].get("phone"),
-            )
+            ),
+            reply_markup=create_phone_request_keyboard(),
         )
         return PERSONAL_PHONE
 
@@ -194,7 +196,12 @@ class PersonalDataHandler(BaseHandler):
         self, update: Update, context: ContextTypes.DEFAULT_TYPE
     ) -> int:
         """Обрабатывает ввод телефона"""
-        value = update.message.text.strip()
+        contact = getattr(update.message, "contact", None)
+        if contact and getattr(contact, "phone_number", None):
+            value = contact.phone_number.strip()
+        else:
+            value = (update.message.text or "").strip()
+
         is_valid, error_message = validate_phone(value)
         if not is_valid:
             await update.message.reply_text(f"❌ {error_message}")
@@ -206,7 +213,8 @@ class PersonalDataHandler(BaseHandler):
                 None,
                 MESSAGES["personal_data_birth_date"],
                 context.user_data["personal_data"].get("birth_date"),
-            )
+            ),
+            reply_markup=create_reply_keyboard_remove(),
         )
         return PERSONAL_BIRTH_DATE
 
