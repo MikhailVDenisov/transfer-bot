@@ -337,13 +337,13 @@ class PersonalDataHandler(BaseHandler):
             context.user_data.pop("personal_data", None)
 
             if not success:
-                await self._remove_reply_keyboard(update)
+                # await self._remove_reply_keyboard(update)
                 await query.edit_message_text(
                     f"❌ {error_message}", reply_markup=create_back_keyboard()
                 )
                 return ConversationHandler.END
 
-            await self._remove_reply_keyboard(update)
+            # await self._remove_reply_keyboard(update)
             if return_to_booking:
                 from handlers.booking_handler import BookingHandler
 
