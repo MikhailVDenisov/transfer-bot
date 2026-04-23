@@ -69,13 +69,14 @@ class TestKeyboards:
         keyboard = create_main_menu_keyboard(is_admin=True)
 
         assert isinstance(keyboard, InlineKeyboardMarkup)
-        assert len(keyboard.inline_keyboard) == 7  # 6 основных + 1 админская
+        assert len(keyboard.inline_keyboard) == 8  # 6 основных + 2 админские
 
         # Проверяем наличие админской кнопки
         button_texts = [
             button.text for row in keyboard.inline_keyboard for button in row
         ]
         assert "Выгрузить персональные данные пассажиров" in button_texts
+        assert "Выгрузить данные" in button_texts
 
     def test_create_directions_keyboard(self):
         """Тест создания клавиатуры с направлениями"""

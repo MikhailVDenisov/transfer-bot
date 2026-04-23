@@ -286,23 +286,22 @@ class TestExportFlow:
         ws = wb["Автобус БУС-101"]
         rows = list(ws.iter_rows(values_only=True))
 
+        assert ws["B2"].value == "Список для Переславль-Залесский"
+        assert ws["B3"].value == "2024-01-15"
+        assert "B5:D5" in [str(range_item) for range_item in ws.merged_cells.ranges]
         assert (
             "№",
-            "Статус",
-            "Фамилия",
-            "Имя",
-            "Отчество",
-            "Телефон",
-            "Дата рождения",
-            "Паспорт",
-            "Гражданство",
-            "Telegram",
-            "Дата добавления",
+            "ФИО (полностью)",
+            None,
+            None,
+            "Дата\nрождения\nчч.мм.гггг",
+            "Серия+номер\nдокумента",
+            "Вид документа\n(СвРжд/ПасРФ)",
+            "Гражданство\n(если не РФ)",
+            "контактный телефон\n(ответственного лица\nребенка/сопровождающего)",
         ) in rows
-        assert any(
-            row[1] == "Пассажир" and row[2] == "Иванов" for row in rows if row[0]
-        )
-        assert any(row[1] == "Очередь" and row[2] == "Петров" for row in rows if row[0])
+        assert any(row[1] == "Иванов" and row[8] == "+79001234567" for row in rows)
+        assert any(row[1] == "Петров" and row[8] == "+79007654321" for row in rows)
 
         export_service.cleanup_temp_file(temp_file)
 
