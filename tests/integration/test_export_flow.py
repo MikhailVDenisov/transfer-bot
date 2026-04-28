@@ -286,7 +286,7 @@ class TestExportFlow:
         ws = wb["Автобус БУС-101"]
         rows = list(ws.iter_rows(values_only=True))
 
-        assert ws["B2"].value == "Список для Переславль-Залесский"
+        assert ws["B2"].value == "Автобус БУС-101"
         assert ws["B3"].value == "2024-01-15"
         assert "B5:D5" in [str(range_item) for range_item in ws.merged_cells.ranges]
         assert (

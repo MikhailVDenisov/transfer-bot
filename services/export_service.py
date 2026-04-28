@@ -281,9 +281,7 @@ class ExportService:
         ws.merge_cells(start_row=3, start_column=2, end_row=3, end_column=7)
         ws.merge_cells(start_row=5, start_column=2, end_row=5, end_column=4)
 
-        ws.cell(
-            row=2, column=2, value=f"Список для {bus.destination or 'другой области'}"
-        )
+        ws.cell(row=2, column=2, value=f"Автобус {bus.number or ''}".strip())
         ws.cell(row=3, column=2, value=bus.departure_date or "Дата поездки")
 
         headers = {
