@@ -92,7 +92,7 @@ class BroadcastChiefHandler(BaseHandler):
 
             context.user_data["bus_id"] = bus_id
             context.user_data["bus_description"] = (
-                f"№{bus.number}, направление - {bus.destination}"
+                f"№{bus.number}, направление - {bus.direction}"
             )
 
             # Устанавливаем признак, что пользователь в режиме рассылки
@@ -236,7 +236,7 @@ class BroadcastChiefHandler(BaseHandler):
                 return
 
             bus_description = context.user_data.get("bus_description")
-            preview_message = f"Сообщение от @{passenger.telegram_username} - шефа автобуса {bus_description} "
+            preview_message = f"Сообщение от @{passenger.telegram_username} - шефа автобуса {bus_description}: "
 
             await query.edit_message_reply_markup(reply_markup=None)
             await query.message.reply_text("Начинаю рассылку...")
@@ -254,7 +254,7 @@ class BroadcastChiefHandler(BaseHandler):
 
             await query.message.reply_text(
                 f"Рассылка завершена.\n"
-                f"Успешно: {stats.sent}\n"
+                f"Отправлено: {stats.sent}\n"
                 f"Ошибок: {stats.failed}\n"
                 f"Заблокировали бота: {stats.forbidden}\n",
                 reply_markup=create_back_keyboard(),
