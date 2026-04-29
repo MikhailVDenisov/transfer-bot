@@ -22,6 +22,7 @@ from utils.keyboards import (
     create_personal_data_export_buses_keyboard,
     create_personal_data_prompt_keyboard,
     create_personal_data_view_keyboard,
+    create_phone_request_keyboard,
     create_reply_keyboard_remove,
     create_waiting_list_keyboard,
 )
@@ -217,6 +218,14 @@ class TestKeyboards:
 
         assert isinstance(keyboard, ReplyKeyboardMarkup)
         assert keyboard.keyboard[0][0].text == "РФ"
+
+    def test_create_phone_request_keyboard(self):
+        """Тест клавиатуры запроса номера телефона из Telegram"""
+        keyboard = create_phone_request_keyboard()
+
+        assert isinstance(keyboard, ReplyKeyboardMarkup)
+        assert keyboard.keyboard[0][0].text == "Поделиться номером"
+        assert keyboard.keyboard[0][0].request_contact is True
 
     def test_create_personal_data_confirm_keyboard(self):
         """Тест клавиатуры подтверждения персональных данных"""

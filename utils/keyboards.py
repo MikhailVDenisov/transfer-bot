@@ -174,6 +174,12 @@ def create_citizenship_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
 
 
+def create_phone_request_keyboard() -> ReplyKeyboardMarkup:
+    """Создает клавиатуру запроса номера телефона из Telegram"""
+    keyboard = [[KeyboardButton("Поделиться номером", request_contact=True)]]
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
+
+
 def create_personal_data_confirm_keyboard() -> InlineKeyboardMarkup:
     """Создает клавиатуру подтверждения персональных данных"""
     keyboard = [
