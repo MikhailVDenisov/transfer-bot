@@ -7,13 +7,18 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMa
 
 from models.entities import Bus, Reservation
 from tests.factories import BusFactory, ReservationFactory
-from utils.const import BROADCAST_CHIEF_CANCEL, BROADCAST_CHIEF_SELECT_BUS
+from utils.const import (
+    BROADCAST_CHIEF_CANCEL,
+    BROADCAST_CHIEF_SELECT_BUS,
+    EXPORT_CHIEF_SELECT_BUS,
+)
 from utils.keyboards import (
     create_back_keyboard,
     create_booking_cancel_keyboard,
     create_buses_keyboard,
     create_cancel_broadcast_chief_keyboard,
     create_chief_buses_keyboard,
+    create_chief_export_buses_keyboard,
     create_citizenship_keyboard,
     create_confirm_booking_keyboard,
     create_directions_keyboard,
@@ -70,14 +75,24 @@ class TestKeyboards:
         keyboard = create_main_menu_keyboard(is_admin=True)
 
         assert isinstance(keyboard, InlineKeyboardMarkup)
-        assert len(keyboard.inline_keyboard) == 8  # 6 основных + 2 админские
+        assert len(keyboard.inline_keyboard) == 7  # 6 основных + 1 админское
 
         # Проверяем наличие админской кнопки
         button_texts = [
             button.text for row in keyboard.inline_keyboard for button in row
         ]
         assert "Выгрузить персональные данные пассажиров" in button_texts
-        assert "Выгрузить данные" in button_texts
+        # assert "Выгрузить данные" in button_texts
+
+    def test_create_main_menu_keyboard_chief(self):
+        """Тест создания главного меню для шефа автобуса"""
+        keyboard = create_main_menu_keyboard(is_admin=False, is_chief=True)
+
+        button_texts = [
+            button.text for row in keyboard.inline_keyboard for button in row
+        ]
+        assert "Отправить сообщение моим пассажирам" in button_texts
+        assert "Выгрузить список пассажиров" in button_texts
 
     def test_create_directions_keyboard(self):
         """Тест создания клавиатуры с направлениями"""
@@ -201,6 +216,24 @@ class TestKeyboards:
         assert keyboard.inline_keyboard[0][0].text == "Назад"
         assert keyboard.inline_keyboard[0][0].callback_data == "back_to_menu"
 
+    def test_create_chief_export_buses_keyboard(self):
+        """Тест клавиатуры выбора автобуса для выгрузки шефом"""
+        buses = [
+            BusFactory.build(
+                id=7,
+                number="БУС-007",
+                departure_date="2024-01-15",
+                departure_time="10:00",
+            )
+        ]
+
+        keyboard = create_chief_export_buses_keyboard(buses)
+
+        assert isinstance(keyboard, InlineKeyboardMarkup)
+        assert keyboard.inline_keyboard[0][0].callback_data == (
+            f"{EXPORT_CHIEF_SELECT_BUS}7"
+        )
+
     def test_create_personal_data_prompt_keyboard(self):
         """Тест клавиатуры перехода к вводу персональных данных"""
         keyboard = create_personal_data_prompt_keyboard("personal_data_from_booking")
@@ -245,6 +278,14 @@ class TestKeyboards:
         assert keyboard.inline_keyboard[0][0].text == "Редактировать"
         assert keyboard.inline_keyboard[0][0].callback_data == "personal_data_edit"
         assert keyboard.inline_keyboard[1][0].text == "Назад"
+
+    def test_create_personal_data_view_keyboard_without_edit(self):
+        """Тест клавиатуры просмотра персональных данных без редактирования"""
+        keyboard = create_personal_data_view_keyboard(allow_edit=False)
+
+        assert isinstance(keyboard, InlineKeyboardMarkup)
+        assert len(keyboard.inline_keyboard) == 1
+        assert keyboard.inline_keyboard[0][0].text == "Назад"
 
     def test_create_reply_keyboard_remove(self):
         """Тест удаления reply-клавиатуры"""

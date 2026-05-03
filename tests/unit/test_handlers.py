@@ -13,6 +13,7 @@ from handlers.broadcast_chief_handler import BroadcastChiefHandler
 from handlers.callback_handler import CallbackHandler
 from handlers.export_handler import ExportHandler
 from handlers.info_handler import InfoHandler
+from handlers.personal_data_handler import PersonalDataHandler
 from handlers.start_handler import StartHandler
 from handlers.view_booking_handler import ViewBookingHandler
 from handlers.waiting_list_handler import WaitingListHandler
@@ -554,6 +555,7 @@ class TestExportHandler:
         """Тест успешной выгрузки персональных данных администратором"""
         mock_passenger = PassengerFactory.build(role="admin")
         mock_context.bot.send_document = AsyncMock()
+        mock_context.bot.send_message = AsyncMock()
         mock_context.user_data["personal_data_export_bus_ids"] = [1]
 
         with (
@@ -571,7 +573,112 @@ class TestExportHandler:
             await handler.export_personal_data(mock_update_with_callback, mock_context)
 
             mock_context.bot.send_document.assert_called_once()
+            mock_context.bot.send_message.assert_called_once()
             assert "personal_data_export_bus_ids" not in mock_context.user_data
+
+    @pytest.mark.asyncio
+    async def test_show_chief_export_menu_success(
+        self, handler, mock_update_with_callback, mock_context
+    ):
+        """Тест открытия меню выгрузки для шефа"""
+        mock_passenger = PassengerFactory.build(role="chief", id=5)
+        mock_buses = [BusFactory.build(id=1, number="БУС-001")]
+
+        with (
+            patch.object(
+                handler, "get_or_create_passenger", return_value=mock_passenger
+            ),
+            patch.object(
+                handler.bus_service, "get_buses_by_chief", return_value=mock_buses
+            ),
+        ):
+            await handler.show_chief_export_menu(
+                mock_update_with_callback, mock_context
+            )
+
+            mock_update_with_callback.callback_query.edit_message_text.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_export_chief_bus_passengers_success(
+        self, handler, mock_update_with_callback, mock_context
+    ):
+        """Тест успешной выгрузки списка пассажиров шефом"""
+        mock_passenger = PassengerFactory.build(role="chief", id=5)
+        mock_context.bot.send_document = AsyncMock()
+        mock_context.bot.send_message = AsyncMock()
+        mock_update_with_callback.callback_query.data = "export_chief_select_bus_1"
+        chief_buses = [BusFactory.build(id=1, number="БУС-001")]
+
+        with (
+            patch.object(
+                handler, "get_or_create_passenger", return_value=mock_passenger
+            ),
+            patch.object(
+                handler.bus_service, "get_buses_by_chief", return_value=chief_buses
+            ),
+            patch.object(
+                handler.export_service,
+                "export_personal_data_to_excel",
+                return_value="temp_file.xlsx",
+            ),
+            patch.object(handler.export_service, "cleanup_temp_file"),
+            patch("builtins.open", mock_open_file_content()),
+        ):
+            await handler.export_chief_bus_passengers(
+                mock_update_with_callback, mock_context
+            )
+
+            mock_context.bot.send_document.assert_called_once()
+            mock_context.bot.send_message.assert_called_once()
+
+
+class TestPersonalDataHandler:
+    """Тесты для PersonalDataHandler"""
+
+    @pytest.fixture
+    def handler(self):
+        return PersonalDataHandler()
+
+    @pytest.fixture
+    def mock_callback_query(self):
+        query = Mock(spec=CallbackQuery)
+        query.answer = AsyncMock()
+        query.edit_message_text = AsyncMock()
+        query.from_user = Mock(spec=User)
+        query.from_user.username = "test_user"
+        return query
+
+    @pytest.fixture
+    def mock_update_with_callback(self, mock_callback_query):
+        update = Mock(spec=Update)
+        update.callback_query = mock_callback_query
+        return update
+
+    @pytest.fixture
+    def mock_context(self):
+        return Mock(spec=ContextTypes.DEFAULT_TYPE)
+
+    @pytest.mark.asyncio
+    async def test_show_personal_data_hides_edit_for_booked_passenger(
+        self, handler, mock_update_with_callback, mock_context
+    ):
+        passenger = PassengerFactory.build(personal_data_confirmed=True)
+
+        with (
+            patch.object(handler, "get_or_create_passenger", return_value=passenger),
+            patch.object(
+                handler.booking_service, "has_active_bookings", return_value=True
+            ),
+        ):
+            await handler.show_personal_data(mock_update_with_callback, mock_context)
+
+        reply_markup = (
+            mock_update_with_callback.callback_query.edit_message_text.call_args.kwargs[
+                "reply_markup"
+            ]
+        )
+        assert len(reply_markup.inline_keyboard) == 1
+        assert reply_markup.inline_keyboard[0][0].text == "Назад"
 
 
 class TestCallbackHandler:
@@ -621,6 +728,24 @@ class TestCallbackHandler:
         with patch.object(
             handler.export_handler,
             "show_personal_data_export_menu",
+            new_callable=AsyncMock,
+        ) as mock_export_menu:
+            await handler.handle_callback(mock_update_with_callback, mock_context)
+
+            mock_export_menu.assert_called_once_with(
+                mock_update_with_callback, mock_context
+            )
+
+    @pytest.mark.asyncio
+    async def test_handle_callback_export_chief_command(
+        self, handler, mock_update_with_callback, mock_context
+    ):
+        """Тест обработки callback выгрузки списка пассажиров шефом"""
+        mock_update_with_callback.callback_query.data = "export_chief_command"
+
+        with patch.object(
+            handler.export_handler,
+            "show_chief_export_menu",
             new_callable=AsyncMock,
         ) as mock_export_menu:
             await handler.handle_callback(mock_update_with_callback, mock_context)
@@ -1041,7 +1166,7 @@ class TestBroadcastChiefHandler:
         completion = next(
             c for c in replies if c.args and "Рассылка завершена" in c.args[0]
         )
-        assert "Успешно: 3" in completion.args[0]
+        assert "Отправлено: 3" in completion.args[0]
         assert completion.kwargs.get("reply_markup") is not None
 
     @pytest.mark.asyncio

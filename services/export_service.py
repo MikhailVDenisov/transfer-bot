@@ -225,7 +225,7 @@ class ExportService:
             waiting_by_bus.setdefault(waiting_record.bus_id, []).append(waiting_record)
 
         for bus in buses:
-            sheet_name = f"Автобус {bus.number}"[:31]
+            sheet_name = f"Автобус {bus.number}, {bus.direction}"[:31]
             ws = wb.create_sheet(title=sheet_name)
 
             self._setup_personal_data_sheet(ws, bus)
@@ -259,7 +259,13 @@ class ExportService:
                 row_number += 1
                 current_row += 1
 
-            if row_number == 1:
+            total_exported_rows = row_number - 1
+            empty_rows_count = max((bus.capacity or 0) - total_exported_rows, 10)
+            for _ in range(empty_rows_count):
+                self._append_personal_data_blank_row(ws, current_row)
+                current_row += 1
+
+            if total_exported_rows == 0:
                 ws.cell(
                     row=current_row,
                     column=1,
@@ -281,8 +287,16 @@ class ExportService:
         ws.merge_cells(start_row=3, start_column=2, end_row=3, end_column=7)
         ws.merge_cells(start_row=5, start_column=2, end_row=5, end_column=4)
 
-        ws.cell(row=2, column=2, value=f"Автобус {bus.number or ''}".strip())
-        ws.cell(row=3, column=2, value=bus.departure_date or "Дата поездки")
+        ws.cell(
+            row=2,
+            column=2,
+            value=f"Автобус {bus.number or ''}, {bus.direction or ''}".strip(),
+        )
+        ws.cell(
+            row=3,
+            column=2,
+            value=f"Дата: {bus.departure_date or "Дата поездки"}".strip(),
+        )
 
         headers = {
             1: "№",
@@ -377,6 +391,16 @@ class ExportService:
         for cells in ws.iter_rows(min_row=row, max_row=row, min_col=1, max_col=9):
             for item in cells:
                 item.border = table_border
+
+    def _append_personal_data_blank_row(self, ws, row: int):
+        """Добавляет пустую строку в форму выгрузки"""
+        ws.row_dimensions[row].height = 24
+        table_border = self._get_personal_data_border()
+        for column in range(1, 10):
+            cell = ws.cell(row=row, column=column, value="")
+            cell.border = table_border
+            cell.font = Font(name="Calibri", size=14)
+            cell.alignment = Alignment(vertical="center", wrap_text=True)
 
     def _get_passenger_name_parts(self, passenger: Passenger) -> tuple:
         """Возвращает фамилию, имя и отчество с fallback на поле FIO"""

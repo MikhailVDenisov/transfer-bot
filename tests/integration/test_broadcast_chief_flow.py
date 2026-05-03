@@ -625,7 +625,7 @@ class TestBroadcastChiefHandlerIntegration:
         # Сначала «Начинаю…», в конце — сводка по статистике
         final = query.message.reply_text.await_args_list[-1].args[0]
         assert "Рассылка завершена" in final
-        assert "Успешно: 1" in final
+        assert "Отправлено: 1" in final
         assert "broadcast_mode" not in ctx.user_data
         assert "broadcast_message" not in ctx.user_data
         assert "bus_id" not in ctx.user_data

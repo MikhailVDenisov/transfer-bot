@@ -64,9 +64,12 @@ class PersonalDataHandler(BaseHandler):
             if not passenger.has_confirmed_personal_data():
                 return await self._start_flow(update, context, passenger, False)
 
+            has_active_bookings = self.booking_service.has_active_bookings(passenger)
             await query.edit_message_text(
                 format_personal_data_view_message(passenger),
-                reply_markup=create_personal_data_view_keyboard(),
+                reply_markup=create_personal_data_view_keyboard(
+                    allow_edit=not has_active_bookings
+                ),
             )
             return ConversationHandler.END
 
@@ -197,10 +200,12 @@ class PersonalDataHandler(BaseHandler):
     ) -> int:
         """Обрабатывает ввод телефона"""
         contact = getattr(update.message, "contact", None)
-        if contact and getattr(contact, "phone_number", None):
-            value = contact.phone_number.strip()
+        contact_phone = getattr(contact, "phone_number", None)
+        if isinstance(contact_phone, str) and contact_phone.strip():
+            value = contact_phone.strip()
         else:
-            value = (update.message.text or "").strip()
+            raw_text = getattr(update.message, "text", "")
+            value = raw_text.strip() if isinstance(raw_text, str) else ""
 
         is_valid, error_message = validate_phone(value)
         if not is_valid:

@@ -17,6 +17,8 @@ from utils.const import (
     BROADCAST_CHIEF_CANCEL,
     BROADCAST_CHIEF_COMMAND,
     BROADCAST_CHIEF_SELECT_BUS,
+    EXPORT_CHIEF_COMMAND,
+    EXPORT_CHIEF_SELECT_BUS,
 )
 
 
@@ -43,6 +45,14 @@ def create_main_menu_keyboard(
                 )
             ]
         )
+        keyboard.append(
+            [
+                InlineKeyboardButton(
+                    "Выгрузить список пассажиров",
+                    callback_data=EXPORT_CHIEF_COMMAND,
+                )
+            ]
+        )
 
     # Добавляем кнопку выгрузки только для администраторов
     if is_admin:
@@ -53,10 +63,10 @@ def create_main_menu_keyboard(
                     callback_data="export_personal_data",
                 )
             ],
-        ),
-        keyboard.append(
-            [InlineKeyboardButton("Выгрузить данные", callback_data="export_buses")]
         )
+        # keyboard.append(
+        #     [InlineKeyboardButton("Выгрузить данные", callback_data="export_buses")]
+        # )
 
     return InlineKeyboardMarkup(keyboard)
 
@@ -159,12 +169,16 @@ def create_personal_data_prompt_keyboard(
     return InlineKeyboardMarkup(keyboard)
 
 
-def create_personal_data_view_keyboard() -> InlineKeyboardMarkup:
+def create_personal_data_view_keyboard(
+    allow_edit: bool = True,
+) -> InlineKeyboardMarkup:
     """Создает клавиатуру просмотра персональных данных"""
-    keyboard = [
-        [InlineKeyboardButton("Редактировать", callback_data="personal_data_edit")],
-        [InlineKeyboardButton("Назад", callback_data="back_to_menu")],
-    ]
+    keyboard = []
+    if allow_edit:
+        keyboard.append(
+            [InlineKeyboardButton("Редактировать", callback_data="personal_data_edit")]
+        )
+    keyboard.append([InlineKeyboardButton("Назад", callback_data="back_to_menu")])
     return InlineKeyboardMarkup(keyboard)
 
 
@@ -265,5 +279,23 @@ def create_personal_data_export_buses_keyboard(
             )
         ]
     )
+    keyboard.append([InlineKeyboardButton("Назад", callback_data="back_to_menu")])
+    return InlineKeyboardMarkup(keyboard)
+
+
+def create_chief_export_buses_keyboard(buses: List[Bus]) -> InlineKeyboardMarkup:
+    """Создает клавиатуру выбора автобуса для выгрузки шефом"""
+    keyboard = []
+
+    for bus in buses:
+        keyboard.append(
+            [
+                InlineKeyboardButton(
+                    f"Автобус {bus.number} ({bus.departure_date} {bus.departure_time})",
+                    callback_data=f"{EXPORT_CHIEF_SELECT_BUS}{bus.id}",
+                )
+            ]
+        )
+
     keyboard.append([InlineKeyboardButton("Назад", callback_data="back_to_menu")])
     return InlineKeyboardMarkup(keyboard)

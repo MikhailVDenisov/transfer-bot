@@ -134,6 +134,59 @@ class TestPersonalDataFlow:
         assert "Ваши персональные данные" in message_text
         assert "Петров" in message_text
 
+    async def test_show_personal_data_hides_edit_when_booking_exists(self, context):
+        """При активной брони скрывает кнопку редактирования"""
+        username = "confirmed_booked_user"
+        handler = PersonalDataHandler()
+        passenger_service = PassengerService()
+        passenger, _ = passenger_service.get_or_create_passenger(username, "123456780")
+        passenger_service.update_personal_data(
+            username,
+            {
+                "last_name": "Орлов",
+                "first_name": "Олег",
+                "patronymic": "Олегович",
+                "phone": "+79001230000",
+                "birth_date": "05.05.1995",
+                "passport_number": "5555 666777",
+                "citizenship": "РФ",
+            },
+        )
+
+        from database.connection import db_connection
+
+        db_connection.execute_query(
+            "INSERT INTO Buses (Number, Departure_Place, Destination, DepartureDate, DepartureTime, Capacity, Direction, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                "БУС-011",
+                "Москва",
+                "Переславль-Залесский",
+                "2024-01-15",
+                "11:00",
+                30,
+                "Туда",
+                True,
+            ),
+        )
+        bus_id = db_connection.execute_query(
+            "SELECT ID FROM Buses WHERE Number = ?",
+            ("БУС-011",),
+            fetch_one=True,
+        )[0]
+        db_connection.execute_query(
+            "INSERT INTO Reservations (PassengerID, BusID, ReservationDate, Direction) VALUES (?, ?, ?, ?)",
+            (passenger.id, bus_id, "2024-01-10 09:00:00", "Туда"),
+        )
+
+        update = build_callback_update(username, "personal_data")
+        await handler.show_personal_data(update, context)
+
+        reply_markup = update.callback_query.edit_message_text.call_args.kwargs[
+            "reply_markup"
+        ]
+        assert len(reply_markup.inline_keyboard) == 1
+        assert reply_markup.inline_keyboard[0][0].text == "Назад"
+
     async def test_booking_flow_returns_to_directions_after_confirmation(self, context):
         """После ввода данных из бронирования возвращает пользователя к выбору направления"""
         username = "booking_user"

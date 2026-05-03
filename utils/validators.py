@@ -98,7 +98,7 @@ def validate_phone(phone: str) -> Tuple[bool, str]:
     elif clean_phone.startswith("9") and len(clean_phone) == 10:
         return True, ""
 
-    if len(clean_phone) > 15:
+    if len(clean_phone) > 12:
         return False, "Номер телефона слишком длинный"
 
     return True, ""

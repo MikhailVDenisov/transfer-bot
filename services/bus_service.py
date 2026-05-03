@@ -26,7 +26,8 @@ class BusService:
                 bus.direction
                 for bus in buses
                 if bus.direction and bus.direction.strip()
-            )
+            ),
+            reverse=True,
         )
         return directions
 

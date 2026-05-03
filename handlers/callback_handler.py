@@ -21,6 +21,8 @@ from utils.const import (
     BROADCAST_CHIEF_COMMAND,
     BROADCAST_CHIEF_SELECT_BUS,
     BROADCAST_CHIEF_SEND,
+    EXPORT_CHIEF_COMMAND,
+    EXPORT_CHIEF_SELECT_BUS,
 )
 
 logger = logging.getLogger(__name__)
@@ -109,6 +111,12 @@ class CallbackHandler:
 
             elif callback_data == "export_personal_data_generate":
                 await self.export_handler.export_personal_data(update, context)
+
+            elif callback_data == EXPORT_CHIEF_COMMAND:
+                await self.export_handler.show_chief_export_menu(update, context)
+
+            elif callback_data.startswith(EXPORT_CHIEF_SELECT_BUS):
+                await self.export_handler.export_chief_bus_passengers(update, context)
 
             elif callback_data == BROADCAST_CHIEF_COMMAND:
                 await self.broadcast_chief_handler.broadcast_command(update, context)

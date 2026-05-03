@@ -215,7 +215,7 @@ class TestExportFlow:
                 "Переславль-Залесский",
                 "2024-01-15",
                 "10:00",
-                30,
+                4,
                 "Туда",
                 True,
             ),
@@ -281,13 +281,13 @@ class TestExportFlow:
         assert os.path.exists(temp_file)
 
         wb = openpyxl.load_workbook(temp_file)
-        assert "Автобус БУС-101" in wb.sheetnames
+        assert "Автобус БУС-101, Туда" in wb.sheetnames
 
-        ws = wb["Автобус БУС-101"]
+        ws = wb["Автобус БУС-101, Туда"]
         rows = list(ws.iter_rows(values_only=True))
 
-        assert ws["B2"].value == "Автобус БУС-101"
-        assert ws["B3"].value == "2024-01-15"
+        assert ws["B2"].value == "Автобус БУС-101, Туда"
+        assert ws["B3"].value == "Дата: 2024-01-15"
         assert "B5:D5" in [str(range_item) for range_item in ws.merged_cells.ranges]
         assert (
             "№",
@@ -302,6 +302,8 @@ class TestExportFlow:
         ) in rows
         assert any(row[1] == "Иванов" and row[8] == "+79001234567" for row in rows)
         assert any(row[1] == "Петров" and row[8] == "+79007654321" for row in rows)
+        empty_rows = [row for row in rows[5:] if all(value is None for value in row)]
+        assert len(empty_rows) >= 2
 
         export_service.cleanup_temp_file(temp_file)
 
