@@ -986,6 +986,7 @@ class TestBroadcastChiefHandler:
     ):
         mock_passenger = PassengerFactory.build(role="chief", id=3)
         chief_buses = [BusFactory.build(id=42, number="1", destination="Туда")]
+        passengers_for_broadcast = [PassengerFactory.build(id=10)]
 
         with (
             patch.object(
@@ -995,6 +996,11 @@ class TestBroadcastChiefHandler:
                 handler.bus_service,
                 "get_buses_by_chief",
                 return_value=chief_buses,
+            ),
+            patch.object(
+                handler.broadcast_service,
+                "get_passengers_for_broadcast",
+                return_value=passengers_for_broadcast,
             ),
         ):
             await handler.prepare_broadcast(mock_update_with_callback, mock_context)
@@ -1072,6 +1078,38 @@ class TestBroadcastChiefHandler:
             mock_update_with_callback,
             mock_context,
             "Этот автобус вам не назначен",
+        )
+        mock_update_with_callback.callback_query.answer.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_prepare_broadcast_no_passengers_on_bus(
+        self, handler, mock_update_with_callback, mock_context
+    ):
+        mock_passenger = PassengerFactory.build(role="chief", id=1)
+        chief_buses = [BusFactory.build(id=42, number="42", destination="Туда")]
+
+        with (
+            patch.object(
+                handler, "get_or_create_passenger", return_value=mock_passenger
+            ),
+            patch.object(
+                handler.bus_service,
+                "get_buses_by_chief",
+                return_value=chief_buses,
+            ),
+            patch.object(
+                handler.broadcast_service,
+                "get_passengers_for_broadcast",
+                return_value=[],
+            ),
+            patch.object(handler, "_broadcast_error", new_callable=AsyncMock) as err,
+        ):
+            await handler.prepare_broadcast(mock_update_with_callback, mock_context)
+
+        err.assert_called_once_with(
+            mock_update_with_callback,
+            mock_context,
+            "Не найдено пассажиров для рассылки",
         )
         mock_update_with_callback.callback_query.answer.assert_called_once()
 

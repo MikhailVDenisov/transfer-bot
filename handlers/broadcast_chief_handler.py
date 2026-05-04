@@ -90,6 +90,23 @@ class BroadcastChiefHandler(BaseHandler):
                 return
             bus = bus_matching[0]
 
+            passengers_for_broadcast = (
+                self.broadcast_service.get_passengers_for_broadcast(
+                    bus_id, passenger.id
+                )
+            )
+            if passengers_for_broadcast is None:
+                await self._broadcast_error(
+                    update, context, "Ошибка получения пассажиров для рассылки"
+                )
+                return
+
+            if len(passengers_for_broadcast) == 0:
+                await self._broadcast_error(
+                    update, context, "Не найдено пассажиров для рассылки"
+                )
+                return
+
             context.user_data["bus_id"] = bus_id
             context.user_data["bus_description"] = (
                 f"№{bus.number}, направление - {bus.direction}"

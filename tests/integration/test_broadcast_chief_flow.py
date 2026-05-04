@@ -520,8 +520,14 @@ class TestBroadcastChiefHandlerIntegration:
         """Успешный выбор автобуса — bus_id, режим рассылки и сброс черновика."""
         chief_id = self._make_chief_in_db("chief_ok", "920050")
         bus_id = self._insert_bus("БУС-OK")
+        ps = PassengerService()
+        passenger, _ = ps.get_or_create_passenger("pax_prepare", "920051")
         self._db().execute_query(
             "INSERT INTO BusOwners (BusID, ChiefID) VALUES (?, ?)", (bus_id, chief_id)
+        )
+        self._db().execute_query(
+            "INSERT INTO Reservations (PassengerID, BusID, ReservationDate, Direction) VALUES (?, ?, ?, ?)",
+            (passenger.id, bus_id, "2024-01-15 10:00:00", "Туда"),
         )
 
         handler = BroadcastChiefHandler()
@@ -537,6 +543,31 @@ class TestBroadcastChiefHandlerIntegration:
         assert ctx.user_data["bus_id"] == bus_id
         assert ctx.user_data["broadcast_mode"] is True
         assert ctx.user_data["broadcast_message"] is None
+
+    @pytest.mark.asyncio
+    async def test_prepare_broadcast_no_passengers_on_bus_integration(self, temp_db):
+        """После выбора автобуса без броней сразу показываем, что рассылать некому."""
+        chief_id = self._make_chief_in_db("chief_prepare_empty", "920052")
+        bus_id = self._insert_bus("БУС-PREPARE-EMPTY")
+        self._db().execute_query(
+            "INSERT INTO BusOwners (BusID, ChiefID) VALUES (?, ?)", (bus_id, chief_id)
+        )
+
+        handler = BroadcastChiefHandler()
+        update, query = self._callback_update(
+            "chief_prepare_empty", 920052, f"{BROADCAST_CHIEF_SELECT_BUS}{bus_id}"
+        )
+        ctx = self._context()
+
+        await handler.prepare_broadcast(update, ctx)
+
+        query.answer.assert_awaited_once()
+        assert (
+            "Не найдено пассажиров для рассылки"
+            in query.edit_message_text.await_args.args[0]
+        )
+        assert "broadcast_mode" not in ctx.user_data
+        assert "bus_id" not in ctx.user_data
 
     @pytest.mark.asyncio
     async def test_handle_chief_message_denied_for_non_chief_in_mode(self, temp_db):
