@@ -233,7 +233,7 @@ def create_chief_buses_keyboard(
         keyboard.append(
             [
                 InlineKeyboardButton(
-                    f"Автобус №{bus.number}, направление - {bus.destination}",
+                    f"Автобус №{bus.number}, направление - {bus.direction}",
                     callback_data=f"{BROADCAST_CHIEF_SELECT_BUS}{bus.id}",
                 )
             ]

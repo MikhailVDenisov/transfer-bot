@@ -307,6 +307,111 @@ class TestExportFlow:
 
         export_service.cleanup_temp_file(temp_file)
 
+    def test_export_chief_bus_passengers_split_and_sorted(self, temp_db):
+        """Шефская выгрузка делит список на бронь и лист ожидания, сортируя по фамилии"""
+        export_service = ExportService()
+
+        from database.connection import db_connection
+
+        db_connection.execute_query(
+            "INSERT INTO Buses (Number, Departure_Place, Destination, DepartureDate, DepartureTime, Capacity, Direction, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                "БУС-777",
+                "Москва",
+                "Переславль-Залесский",
+                "2024-01-15",
+                "10:00",
+                10,
+                "Туда",
+                True,
+            ),
+        )
+
+        passengers_data = [
+            ("booked_1", "101", "Сидоров", "Илья", "Олегович"),
+            ("booked_2", "102", "Алексеев", "Борис", "Игоревич"),
+            ("waiting_1", "103", "Яковлев", "Антон", "Павлович"),
+            ("waiting_2", "104", "Волков", "Дмитрий", "Сергеевич"),
+        ]
+        for username, chat_id, last_name, first_name, patronymic in passengers_data:
+            db_connection.execute_query(
+                "INSERT INTO Passengers (Telegram_username, ChatID, Role, LastName, FirstName, Patronymic, PersonalDataConfirmed) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (
+                    username,
+                    chat_id,
+                    "user",
+                    last_name,
+                    first_name,
+                    patronymic,
+                    True,
+                ),
+            )
+
+        bus = next(
+            bus
+            for bus in export_service.bus_repository.get_all()
+            if bus.number == "БУС-777"
+        )
+        passengers = {
+            passenger.telegram_username: passenger
+            for passenger in export_service.passenger_repository.get_all()
+        }
+
+        db_connection.execute_query(
+            "INSERT INTO Reservations (PassengerID, BusID, ReservationDate, Direction) VALUES (?, ?, ?, ?)",
+            (passengers["booked_1"].id, bus.id, "2024-01-10 10:00:00", bus.direction),
+        )
+        db_connection.execute_query(
+            "INSERT INTO Reservations (PassengerID, BusID, ReservationDate, Direction) VALUES (?, ?, ?, ?)",
+            (passengers["booked_2"].id, bus.id, "2024-01-10 09:00:00", bus.direction),
+        )
+        db_connection.execute_query(
+            "INSERT INTO WaitingList (PassengerID, BusID, RequestTime, Status, NotificationSent) VALUES (?, ?, ?, ?, ?)",
+            (
+                passengers["waiting_1"].id,
+                bus.id,
+                "2024-01-10 11:00:00",
+                "Waiting",
+                "No",
+            ),
+        )
+        db_connection.execute_query(
+            "INSERT INTO WaitingList (PassengerID, BusID, RequestTime, Status, NotificationSent) VALUES (?, ?, ?, ?, ?)",
+            (
+                passengers["waiting_2"].id,
+                bus.id,
+                "2024-01-10 08:00:00",
+                "Waiting",
+                "No",
+            ),
+        )
+
+        import asyncio
+
+        import openpyxl
+
+        temp_file = asyncio.run(
+            export_service.export_personal_data_to_excel([bus.id], chief_view=True)
+        )
+
+        assert os.path.exists(temp_file)
+
+        wb = openpyxl.load_workbook(temp_file)
+        ws = wb["Автобус БУС-777, Туда"]
+        rows = list(ws.iter_rows(values_only=True))
+
+        assert rows[3] == ("Забронированы", None, None)
+        assert rows[4] == ("Фамилия", "Имя", "Отчество")
+        assert rows[5] == ("Алексеев", "Борис", "Игоревич")
+        assert rows[6] == ("Сидоров", "Илья", "Олегович")
+        assert rows[7] == (None, None, None)
+        assert rows[8] == ("Лист ожидания", None, None)
+        assert rows[9] == ("Фамилия", "Имя", "Отчество")
+        assert rows[10] == ("Волков", "Дмитрий", "Сергеевич")
+        assert rows[11] == ("Яковлев", "Антон", "Павлович")
+
+        export_service.cleanup_temp_file(temp_file)
+
     def test_export_service_large_dataset(self, temp_db):
         """Тест экспорта с большим объемом данных"""
         export_service = ExportService()

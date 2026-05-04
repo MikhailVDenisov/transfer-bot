@@ -101,6 +101,7 @@ class ExportHandler(BaseHandler):
         self, update: Update, context: ContextTypes.DEFAULT_TYPE
     ):
         """Выгружает персональные данные по выбранным автобусам"""
+        temp_file = None
         try:
             query = update.callback_query
             passenger = await self.get_or_create_passenger(update)
@@ -139,7 +140,6 @@ class ExportHandler(BaseHandler):
                 reply_markup=create_back_keyboard(),
             )
             context.user_data.pop("personal_data_export_bus_ids", None)
-            self.export_service.cleanup_temp_file(temp_file)
 
         except Exception as e:
             logger.error(f"Ошибка при выгрузке персональных данных: {e}")
@@ -149,6 +149,9 @@ class ExportHandler(BaseHandler):
                 await update.callback_query.edit_message_text(error_msg)
             else:
                 await update.message.reply_text(error_msg)
+        finally:
+            if temp_file:
+                self.export_service.cleanup_temp_file(temp_file)
 
     async def show_chief_export_menu(
         self, update: Update, context: ContextTypes.DEFAULT_TYPE
@@ -184,6 +187,7 @@ class ExportHandler(BaseHandler):
         self, update: Update, context: ContextTypes.DEFAULT_TYPE
     ):
         """Выгружает список пассажиров по автобусу, назначенному шефу"""
+        temp_file = None
         try:
             query = update.callback_query
             passenger = await self.get_or_create_passenger(update)
@@ -201,7 +205,7 @@ class ExportHandler(BaseHandler):
             msg = await query.edit_message_text("🔄 Подготовка выгрузки пассажиров...")
 
             temp_file = await self.export_service.export_personal_data_to_excel(
-                [bus_id]
+                [bus_id], chief_view=True
             )
 
             await msg.edit_text("📤 Отправляем файл...")
@@ -220,7 +224,6 @@ class ExportHandler(BaseHandler):
                 text="Что дальше?",
                 reply_markup=create_back_keyboard(),
             )
-            self.export_service.cleanup_temp_file(temp_file)
 
         except Exception as e:
             logger.error(f"Ошибка при выгрузке списка пассажиров шефом: {e}")
@@ -230,6 +233,9 @@ class ExportHandler(BaseHandler):
                 await update.callback_query.edit_message_text(error_msg)
             else:
                 await update.message.reply_text(error_msg)
+        finally:
+            if temp_file:
+                self.export_service.cleanup_temp_file(temp_file)
 
     async def export_buses(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Экспортирует данные об автобусах"""

@@ -577,6 +577,31 @@ class TestExportHandler:
             assert "personal_data_export_bus_ids" not in mock_context.user_data
 
     @pytest.mark.asyncio
+    async def test_export_personal_data_admin_cleans_temp_file_on_send_error(
+        self, handler, mock_update_with_callback, mock_context
+    ):
+        """Временный файл удаляется даже если отправка документа завершилась ошибкой"""
+        mock_passenger = PassengerFactory.build(role="admin")
+        mock_context.bot.send_document = AsyncMock(side_effect=Exception("send failed"))
+        mock_context.user_data["personal_data_export_bus_ids"] = [1]
+
+        with (
+            patch.object(
+                handler, "get_or_create_passenger", return_value=mock_passenger
+            ),
+            patch.object(
+                handler.export_service,
+                "export_personal_data_to_excel",
+                return_value="temp_file.xlsx",
+            ),
+            patch.object(handler.export_service, "cleanup_temp_file") as cleanup_mock,
+            patch("builtins.open", mock_open_file_content()),
+        ):
+            await handler.export_personal_data(mock_update_with_callback, mock_context)
+
+            cleanup_mock.assert_called_once_with("temp_file.xlsx")
+
+    @pytest.mark.asyncio
     async def test_show_chief_export_menu_success(
         self, handler, mock_update_with_callback, mock_context
     ):
@@ -608,6 +633,7 @@ class TestExportHandler:
         mock_context.bot.send_message = AsyncMock()
         mock_update_with_callback.callback_query.data = "export_chief_select_bus_1"
         chief_buses = [BusFactory.build(id=1, number="БУС-001")]
+        export_mock = AsyncMock(return_value="temp_file.xlsx")
 
         with (
             patch.object(
@@ -619,7 +645,7 @@ class TestExportHandler:
             patch.object(
                 handler.export_service,
                 "export_personal_data_to_excel",
-                return_value="temp_file.xlsx",
+                export_mock,
             ),
             patch.object(handler.export_service, "cleanup_temp_file"),
             patch("builtins.open", mock_open_file_content()),
@@ -630,6 +656,39 @@ class TestExportHandler:
 
             mock_context.bot.send_document.assert_called_once()
             mock_context.bot.send_message.assert_called_once()
+            export_mock.assert_awaited_once_with([1], chief_view=True)
+
+    @pytest.mark.asyncio
+    async def test_export_chief_bus_passengers_cleans_temp_file_on_send_error(
+        self, handler, mock_update_with_callback, mock_context
+    ):
+        """Шефская выгрузка удаляет временный файл даже при ошибке отправки"""
+        mock_passenger = PassengerFactory.build(role="chief", id=5)
+        mock_context.bot.send_document = AsyncMock(side_effect=Exception("send failed"))
+        mock_update_with_callback.callback_query.data = "export_chief_select_bus_1"
+        chief_buses = [BusFactory.build(id=1, number="БУС-001")]
+        export_mock = AsyncMock(return_value="temp_file.xlsx")
+
+        with (
+            patch.object(
+                handler, "get_or_create_passenger", return_value=mock_passenger
+            ),
+            patch.object(
+                handler.bus_service, "get_buses_by_chief", return_value=chief_buses
+            ),
+            patch.object(
+                handler.export_service,
+                "export_personal_data_to_excel",
+                export_mock,
+            ),
+            patch.object(handler.export_service, "cleanup_temp_file") as cleanup_mock,
+            patch("builtins.open", mock_open_file_content()),
+        ):
+            await handler.export_chief_bus_passengers(
+                mock_update_with_callback, mock_context
+            )
+
+            cleanup_mock.assert_called_once_with("temp_file.xlsx")
 
 
 class TestPersonalDataHandler:

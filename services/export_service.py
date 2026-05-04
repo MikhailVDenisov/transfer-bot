@@ -66,7 +66,9 @@ class ExportService:
             logger.error(f"Ошибка при экспорте данных: {str(e)}")
             raise
 
-    async def export_personal_data_to_excel(self, bus_ids: List[int]) -> str:
+    async def export_personal_data_to_excel(
+        self, bus_ids: List[int], chief_view: bool = False
+    ) -> str:
         """
         Экспортирует персональные данные пассажиров и лист ожидания по выбранным автобусам
 
@@ -92,6 +94,7 @@ class ExportService:
                 reservations,
                 waiting_records,
                 temp_file,
+                chief_view,
             )
 
             return temp_file
@@ -198,6 +201,7 @@ class ExportService:
         reservations: List[Reservation],
         waiting_records: List[WaitingListRecord],
         filename: str,
+        chief_view: bool = False,
     ):
         """Генерирует Excel файл с персональными данными по выбранным автобусам"""
         wb = openpyxl.Workbook()
@@ -227,6 +231,17 @@ class ExportService:
         for bus in buses:
             sheet_name = f"Автобус {bus.number}, {bus.direction}"[:31]
             ws = wb.create_sheet(title=sheet_name)
+
+            if chief_view:
+                self._setup_chief_export_sheet(ws, bus)
+                self._fill_chief_export_sheet(
+                    ws,
+                    bus,
+                    passengers_by_id,
+                    reservations_by_bus.get(bus.id, []),
+                    waiting_by_bus.get(bus.id, []),
+                )
+                continue
 
             self._setup_personal_data_sheet(ws, bus)
 
@@ -281,6 +296,112 @@ class ExportService:
 
         wb.save(filename)
 
+    def _setup_chief_export_sheet(self, ws, bus: Bus):
+        """Оформляет лист выгрузки для шефа автобуса"""
+        ws.cell(
+            row=1,
+            column=1,
+            value=f"Автобус {bus.number or ''}, {bus.direction or ''}".strip(", "),
+        )
+        ws.cell(row=2, column=1, value=f"Дата: {bus.departure_date or ''}".strip())
+
+        ws.column_dimensions["A"].width = 22
+        ws.column_dimensions["B"].width = 22
+        ws.column_dimensions["C"].width = 22
+
+        ws["A1"].font = Font(name="Calibri", size=14, bold=True)
+        ws["A2"].font = Font(name="Calibri", size=12, bold=True)
+
+    def _fill_chief_export_sheet(
+        self,
+        ws,
+        bus: Bus,
+        passengers_by_id: Dict[int, Passenger],
+        reservations: List[Reservation],
+        waiting_records: List[WaitingListRecord],
+    ):
+        """Заполняет лист выгрузки для шефа: брони и лист ожидания"""
+        current_row = 4
+
+        booked_passengers = self._sort_passengers_for_chief_export(
+            [
+                passenger
+                for reservation in reservations
+                if (passenger := passengers_by_id.get(reservation.passenger_id))
+            ]
+        )
+        current_row = self._append_chief_export_section(
+            ws, current_row, "Забронированы", booked_passengers
+        )
+
+        current_row += 1
+
+        waiting_passengers = self._sort_passengers_for_chief_export(
+            [
+                passenger
+                for waiting_record in waiting_records
+                if waiting_record.is_waiting()
+                and (passenger := passengers_by_id.get(waiting_record.passenger_id))
+            ]
+        )
+        self._append_chief_export_section(
+            ws, current_row, "Лист ожидания", waiting_passengers
+        )
+
+    def _append_chief_export_section(
+        self,
+        ws,
+        start_row: int,
+        title: str,
+        passengers: List[Passenger],
+    ) -> int:
+        """Добавляет секцию шефской выгрузки и возвращает следующую строку"""
+        ws.cell(row=start_row, column=1, value=title)
+        ws.cell(row=start_row, column=1).font = Font(name="Calibri", size=12, bold=True)
+
+        header_row = start_row + 1
+        headers = ("Фамилия", "Имя", "Отчество")
+        for column, value in enumerate(headers, start=1):
+            cell = ws.cell(row=header_row, column=column, value=value)
+            cell.font = Font(name="Calibri", size=11, bold=True)
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+            cell.fill = PatternFill(fill_type="solid", fgColor="F2F2F2")
+            cell.border = self._get_personal_data_border()
+
+        data_row = header_row + 1
+        if not passengers:
+            ws.cell(row=data_row, column=1, value="Нет записей")
+            ws.cell(row=data_row, column=1).font = Font(
+                name="Calibri", size=11, italic=True
+            )
+            return data_row + 1
+
+        for passenger in passengers:
+            last_name, first_name, patronymic = self._get_passenger_name_parts(
+                passenger
+            )
+            values = (last_name, first_name, patronymic)
+            for column, value in enumerate(values, start=1):
+                cell = ws.cell(row=data_row, column=column, value=value)
+                cell.font = Font(name="Calibri", size=11)
+                cell.alignment = Alignment(vertical="center")
+                cell.border = self._get_personal_data_border()
+            data_row += 1
+
+        return data_row
+
+    def _sort_passengers_for_chief_export(
+        self, passengers: List[Passenger]
+    ) -> List[Passenger]:
+        """Сортирует пассажиров по алфавиту, начиная с фамилии"""
+        return sorted(
+            passengers,
+            key=lambda passenger: tuple(
+                part.strip().lower()
+                for part in self._get_passenger_name_parts(passenger)
+            ),
+        )
+
     def _setup_personal_data_sheet(self, ws, bus: Bus):
         """Оформляет лист персональной выгрузки по шаблону перевозчика"""
         ws.merge_cells(start_row=2, start_column=2, end_row=2, end_column=7)
@@ -295,7 +416,7 @@ class ExportService:
         ws.cell(
             row=3,
             column=2,
-            value=f"Дата: {bus.departure_date or "Дата поездки"}".strip(),
+            value=f"Дата: {bus.departure_date or 'Дата поездки'}".strip(),
         )
 
         headers = {
