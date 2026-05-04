@@ -291,7 +291,7 @@ def create_chief_export_buses_keyboard(buses: List[Bus]) -> InlineKeyboardMarkup
         keyboard.append(
             [
                 InlineKeyboardButton(
-                    f"Автобус {bus.number} ({bus.departure_date} {bus.departure_time})",
+                    f"Автобус {bus.number} ({bus.departure_date} {bus.departure_time}) {bus.direction}",
                     callback_data=f"{EXPORT_CHIEF_SELECT_BUS}{bus.id}",
                 )
             ]

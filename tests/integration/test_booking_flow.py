@@ -165,6 +165,93 @@ class TestBookingFlow:
         assert len(updated_records) == 1
         assert updated_records[0].status == "Confirmed"
 
+    def test_booking_removes_waiting_record_before_notification(self, temp_db):
+        """Если пассажир сам записался до рассылки, Waiting-запись удаляется"""
+        passenger_service = PassengerService()
+        bus_service = BusService()
+        booking_service = BookingService()
+        waiting_service = WaitingListService()
+
+        passenger, created = passenger_service.get_or_create_passenger(
+            "self_book_before_notify", "123450001"
+        )
+        assert created is True
+
+        from database.connection import db_connection
+
+        db_connection.execute_query(
+            "INSERT INTO Buses (Number, Departure_Place, Destination, DepartureDate, DepartureTime, Capacity, Direction, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                "БУС-004",
+                "Москва",
+                "Переславль-Залесский",
+                "2024-01-15",
+                "16:00",
+                3,
+                "Туда",
+                True,
+            ),
+        )
+
+        bus = bus_service.get_all_buses()[0]
+
+        success = waiting_service.add_to_waiting_list(passenger, bus)
+        assert success is True
+        waiting_records_before = WaitingListRepository.get_by_passenger_and_bus(
+            passenger.id, bus.id
+        )
+        assert len(waiting_records_before) == 1
+        assert waiting_records_before[0].notification_sent == "No"
+
+        success = booking_service.create_booking(passenger, bus)
+        assert success is True
+
+        waiting_records_after = WaitingListRepository.get_by_passenger_and_bus(
+            passenger.id, bus.id
+        )
+        assert waiting_records_after == []
+
+    def test_booking_marks_waiting_record_confirmed_after_notification(self, temp_db):
+        """Если рассылка уже была отправлена, самостоятельная бронь ставит статус Confirmed"""
+        passenger_service = PassengerService()
+        bus_service = BusService()
+        booking_service = BookingService()
+
+        passenger, created = passenger_service.get_or_create_passenger(
+            "self_book_after_notify", "123450002"
+        )
+        assert created is True
+
+        from database.connection import db_connection
+
+        db_connection.execute_query(
+            "INSERT INTO Buses (Number, Departure_Place, Destination, DepartureDate, DepartureTime, Capacity, Direction, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                "БУС-005",
+                "Москва",
+                "Переславль-Залесский",
+                "2024-01-15",
+                "18:00",
+                3,
+                "Туда",
+                True,
+            ),
+        )
+
+        bus = bus_service.get_all_buses()[0]
+        db_connection.execute_query(
+            "INSERT INTO WaitingList (PassengerID, BusID, RequestTime, Status, NotificationSent) VALUES (?, ?, ?, ?, ?)",
+            (passenger.id, bus.id, "2024-01-15 10:00:00", "Waiting", "Yes"),
+        )
+
+        success = booking_service.create_booking(passenger, bus)
+        assert success is True
+
+        waiting_records = WaitingListRepository.get_all()
+        assert len(waiting_records) == 1
+        assert waiting_records[0].status == "Confirmed"
+        assert waiting_records[0].notification_sent == "Yes"
+
     def test_multiple_passengers_booking(self, temp_db):
         """Тест бронирования несколькими пассажирами"""
         # Создаем сервисы

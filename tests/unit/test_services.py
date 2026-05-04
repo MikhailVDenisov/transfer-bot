@@ -258,6 +258,9 @@ class TestBookingService:
         with (
             patch.object(service, "can_book_bus", return_value=(True, "")),
             patch.object(service.reservation_repository, "create") as mock_create,
+            patch.object(
+                service.waiting_repository, "get_by_passenger_and_bus", return_value=[]
+            ),
         ):
 
             result = service.create_booking(mock_passenger, mock_bus)
@@ -266,6 +269,68 @@ class TestBookingService:
             mock_create.assert_called_once_with(
                 mock_passenger.id, mock_bus.id, mock_bus.direction
             )
+
+    def test_create_booking_deletes_waiting_record_before_notification(self):
+        """Самостоятельная бронь до рассылки удаляет запись из листа ожидания"""
+        service = BookingService()
+        mock_passenger = PassengerFactory.build()
+        mock_bus = BusFactory.build()
+        waiting_record = WaitingListRecordFactory.build(notification_sent="No")
+
+        with (
+            patch.object(service, "can_book_bus", return_value=(True, "")),
+            patch.object(service.reservation_repository, "create"),
+            patch.object(
+                service.waiting_repository,
+                "get_by_passenger_and_bus",
+                return_value=[waiting_record],
+            ),
+            patch.object(
+                service.waiting_repository, "delete_by_passenger_and_bus"
+            ) as mock_delete_waiting,
+            patch.object(
+                service.waiting_repository, "update_status"
+            ) as mock_update_status,
+        ):
+            result = service.create_booking(mock_passenger, mock_bus)
+
+            assert result is True
+            mock_delete_waiting.assert_called_once_with(mock_passenger.id, mock_bus.id)
+            mock_update_status.assert_not_called()
+
+    def test_create_booking_confirms_waiting_record_after_notification(self):
+        """Бронь после рассылки переводит запись ожидания в Confirmed"""
+        service = BookingService()
+        mock_passenger = PassengerFactory.build()
+        mock_bus = BusFactory.build()
+        waiting_record = WaitingListRecordFactory.build(
+            id=7, notification_sent="Yes", status="Waiting"
+        )
+
+        with (
+            patch.object(service, "can_book_bus", return_value=(True, "")),
+            patch.object(service.reservation_repository, "create"),
+            patch.object(
+                service.waiting_repository,
+                "get_by_passenger_and_bus",
+                return_value=[waiting_record],
+            ),
+            patch.object(
+                service.waiting_repository, "delete_by_passenger_and_bus"
+            ) as mock_delete_waiting,
+            patch.object(
+                service.waiting_repository, "update_status"
+            ) as mock_update_status,
+            patch.object(
+                service.waiting_repository, "update_notification"
+            ) as mock_update_notification,
+        ):
+            result = service.create_booking(mock_passenger, mock_bus)
+
+            assert result is True
+            mock_delete_waiting.assert_not_called()
+            mock_update_status.assert_called_once_with(7, "Confirmed")
+            mock_update_notification.assert_called_once_with(7, "Yes")
 
     def test_create_booking_failed(self):
         """Тест неудачного создания бронирования"""

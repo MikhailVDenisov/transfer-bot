@@ -57,6 +57,7 @@ class BookingService:
                 return False
 
             self.reservation_repository.create(passenger.id, bus.id, bus.direction)
+            self._sync_waiting_list_after_booking(passenger, bus)
             return True
         except Exception as e:
             logger.error(f"Ошибка при создании бронирования: {str(e)}")
@@ -113,3 +114,20 @@ class BookingService:
         except Exception as e:
             logger.error(f"Ошибка при добавлении в лист ожидания: {str(e)}")
             return False
+
+    def _sync_waiting_list_after_booking(self, passenger: Passenger, bus: Bus) -> None:
+        """Синхронизирует запись в листе ожидания после успешной брони."""
+        waiting_records = self.waiting_repository.get_by_passenger_and_bus(
+            passenger.id, bus.id
+        )
+        if not waiting_records:
+            return
+
+        if any(record.is_notification_sent() for record in waiting_records):
+            for record in waiting_records:
+                if record.is_waiting():
+                    self.waiting_repository.update_status(record.id, "Confirmed")
+                    self.waiting_repository.update_notification(record.id, "Yes")
+            return
+
+        self.waiting_repository.delete_by_passenger_and_bus(passenger.id, bus.id)

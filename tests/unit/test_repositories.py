@@ -573,6 +573,66 @@ class TestWaitingListRepository:
         assert len(waiting_records) == 1
         assert waiting_records[0].status == "Waiting"
 
+    def test_delete_by_passenger_and_bus(self):
+        """Удаление по пассажиру и автобусу убирает только активные Waiting-записи"""
+        from tests.factories import PassengerFactory
+
+        test_passenger = PassengerFactory.build()
+        passenger = PassengerRepository.create(
+            test_passenger.telegram_username, test_passenger.chat_id
+        )
+        from database.connection import db_connection
+
+        db_connection.execute_query(
+            "INSERT INTO Buses (Number, Departure_Place, Destination, DepartureDate, DepartureTime, Capacity, Direction, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                "БУС-001",
+                "Москва",
+                "Переславль-Залесский",
+                "2024-01-15",
+                "10:00",
+                30,
+                "Туда",
+                True,
+            ),
+        )
+        db_connection.execute_query(
+            "INSERT INTO Buses (Number, Departure_Place, Destination, DepartureDate, DepartureTime, Capacity, Direction, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                "БУС-002",
+                "Москва",
+                "Переславль-Залесский",
+                "2024-01-15",
+                "12:00",
+                30,
+                "Обратно",
+                True,
+            ),
+        )
+        buses = BusRepository.get_all()
+        bus1 = buses[0]
+        bus2 = buses[1]
+
+        WaitingListRepository.create(passenger.id, bus1.id)
+        db_connection.execute_query(
+            "INSERT INTO WaitingList (PassengerID, BusID, RequestTime, Status, NotificationSent) VALUES (?, ?, ?, ?, ?)",
+            (passenger.id, bus1.id, "2024-01-15 10:00:00", "Confirmed", "Yes"),
+        )
+        WaitingListRepository.create(passenger.id, bus2.id)
+
+        WaitingListRepository.delete_by_passenger_and_bus(passenger.id, bus1.id)
+
+        remaining_records = WaitingListRepository.get_all()
+        assert len(remaining_records) == 2
+        assert any(
+            record.bus_id == bus1.id and record.status == "Confirmed"
+            for record in remaining_records
+        )
+        assert any(
+            record.bus_id == bus2.id and record.status == "Waiting"
+            for record in remaining_records
+        )
+
 
 class TestBusOwnerRepository:
     """Тесты для BusOwnerRepository"""

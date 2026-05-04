@@ -268,6 +268,14 @@ class WaitingListRepository:
         )
         return [WaitingListRecord.from_tuple(row) for row in results] if results else []
 
+    @staticmethod
+    def delete_by_passenger_and_bus(passenger_id: int, bus_id: int) -> None:
+        """Удаляет активные записи ожидания по пассажиру и автобусу"""
+        db_connection.execute_query(
+            "DELETE FROM WaitingList WHERE PassengerID = ? AND BusID = ? AND Status = 'Waiting'",
+            (passenger_id, bus_id),
+        )
+
 
 class BusOwnerRepository:
     """Репозиторий для работы с владельцами автобусов"""
