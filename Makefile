@@ -2,7 +2,7 @@
 # Удобные команды для разработки проекта
 
 # Переменные
-PYTHON := python
+PYTHON := python3
 PIP := pip
 PYTEST := pytest
 VENV_DIR := .venv
@@ -18,7 +18,7 @@ CYAN := \033[0;36m
 WHITE := \033[0;37m
 RESET := \033[0m
 
-.PHONY: help install install-dev install-test clean test test-unit test-integration test-cov lint format check-format check-imports run db-init build docs clean-pyc clean-build clean-test clean-all deploy deploy-check deploy-status deploy-logs deploy-restart
+.PHONY: help install install-dev install-test clean test test-unit test-integration test-cov lint format check-format check-imports run db-init db-backup build docs clean-pyc clean-build clean-test clean-all deploy deploy-check deploy-status deploy-logs deploy-restart
 
 # Помощь (по умолчанию)
 help:
@@ -46,6 +46,7 @@ help:
 	@echo "$(YELLOW)Запуск и база данных:$(RESET)"
 	@echo "  $(GREEN)run$(RESET)              - Запустить бота"
 	@echo "  $(GREEN)db-init$(RESET)          - Инициализировать базу данных"
+	@echo "  $(GREEN)db-backup$(RESET)        - Создать резервную копию базы данных"
 	@echo ""
 	@echo "$(YELLOW)Сборка и очистка:$(RESET)"
 	@echo "  $(GREEN)build$(RESET)            - Собрать пакет"
@@ -160,6 +161,11 @@ db-init:
 	@echo "$(BLUE)Инициализация базы данных...$(RESET)"
 	$(PYTHON) -c "from database.init_db import init_database; init_database()"
 	@echo "$(GREEN)✅ База данных инициализирована!$(RESET)"
+
+db-backup:
+	@echo "$(BLUE)Создание резервной копии базы данных...$(RESET)"
+	$(PYTHON) -m database.backup
+	@echo "$(GREEN)✅ Резервная копия создана!$(RESET)"
 
 # Сборка
 build:

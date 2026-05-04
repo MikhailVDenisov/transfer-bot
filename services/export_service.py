@@ -275,7 +275,7 @@ class ExportService:
                 current_row += 1
 
             total_exported_rows = row_number - 1
-            empty_rows_count = max((bus.capacity or 0) - total_exported_rows, 10)
+            empty_rows_count = 0
             for _ in range(empty_rows_count):
                 self._append_personal_data_blank_row(ws, current_row)
                 current_row += 1

@@ -23,6 +23,7 @@ Transfer Bot - это современный Telegram бот, разработа
 make help        # Показать все доступные команды
 make dev-setup   # Полная настройка среды разработки
 make test        # Запустить тесты
+make db-backup   # Создать резервную копию базы данных
 make test-fast   # Быстрые тесты без покрытия
 make format      # Отформатировать код
 make clean       # Очистить временные файлы
@@ -121,7 +122,16 @@ make db-init
 python -c "from database.init_db import init_database; init_database()"
 ```
 
-6. Запустите бота:
+6. При необходимости создайте резервную копию базы данных:
+```bash
+# Через Makefile
+make db-backup
+
+# Или прямой запуск с указанием пути к базе
+python -m database.backup --db-path transfer-bot.db --backup-dir backups --keep 7
+```
+
+7. Запустите бота:
 ```bash
 # Через Makefile (рекомендуется)
 make run

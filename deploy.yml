@@ -46,16 +46,16 @@
         src: "{{ playbook_dir }}/"
         dest: "{{ bot_home }}/"
         delete: yes
-        exclude:
-          - .git/
-          - __pycache__/
-          - "*.pyc"
-          - .env
-          - transfer_bot.db
-          - deploy.yml
-          - inventory.ini
-          - ansible.cfg
-      become_user: "{{ bot_user }}"
+        rsync_opts:
+          - "--exclude=.git/"
+          - "--exclude=__pycache__/"
+          - "--exclude=*.pyc"
+          - "--exclude=.env"
+          - "--exclude=transfer_bot.db"
+          - "--exclude=deploy.yml"
+          - "--exclude=inventory.ini"
+          - "--exclude=ansible.cfg"
+      become: no
       delegate_to: localhost
       tags: sync
 

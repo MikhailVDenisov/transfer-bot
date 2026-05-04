@@ -95,6 +95,7 @@ Documentation = "https://github.com/your-org/transfer-bot#readme"
 
 [project.scripts]
 transfer-bot = "app:main"
+transfer-bot-backup = "database.backup:main"
 
 # Настройки pytest
 [tool.pytest.ini_options]
