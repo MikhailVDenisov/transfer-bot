@@ -145,7 +145,7 @@ class BusRepository:
     def get_by_chief(chief_id: int) -> List[Bus]:
         """Получает автобусы по владельцу и направлению"""
         results = db_connection.execute_query(
-            "SELECT b.* FROM Buses b JOIN BusOwners bo ON b.ID = bo.BusID WHERE bo.chiefID = ? AND (is_active = TRUE OR is_active IS NULL)",
+            "SELECT b.* FROM Buses b JOIN BusOwners bo ON b.ID = bo.BusID WHERE bo.chiefID = ?",
             (chief_id,),
             fetch_all=True,
         )

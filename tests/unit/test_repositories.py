@@ -312,6 +312,43 @@ class TestBusRepository:
 
         assert buses_by_chief2[0].number == "БУС-002"
 
+    def test_get_by_chief_includes_inactive_buses(self):
+        """Шеф видит и неактивные автобусы, если они назначены ему"""
+
+        from tests.factories import PassengerFactory
+
+        chief_data = PassengerFactory.build()
+        PassengerRepository.create(chief_data.telegram_username, chief_data.chat_id)
+        chief = PassengerRepository.get_all()[0]
+
+        from database.connection import db_connection
+
+        db_connection.execute_query(
+            "INSERT INTO Buses (Number, Departure_Place, Destination, DepartureDate, DepartureTime, Capacity, Direction, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                "БУС-INACTIVE",
+                "Москва",
+                "Переславль-Залесский",
+                "2024-01-15",
+                "10:00",
+                30,
+                "Туда",
+                False,
+            ),
+        )
+
+        bus = BusRepository.get_all()[0]
+        db_connection.execute_query(
+            "INSERT INTO BusOwners (BusID, ChiefID) VALUES (?, ?)",
+            (bus.id, chief.id),
+        )
+
+        buses_by_chief = BusRepository.get_by_chief(chief.id)
+
+        assert len(buses_by_chief) == 1
+        assert buses_by_chief[0].id == bus.id
+        assert buses_by_chief[0].is_active is False
+
 
 class TestReservationRepository:
     """Тесты для ReservationRepository"""

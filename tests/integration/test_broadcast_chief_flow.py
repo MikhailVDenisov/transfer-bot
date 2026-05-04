@@ -28,24 +28,24 @@ from utils.const import (
 class TestBroadcastChiefFlow:
     """Интеграционные тесты: шеф, назначенные автобусы и список пассажиров для рассылки"""
 
-    def _insert_bus(self) -> int:
+    def _insert_bus(self, number: str = "БУС-BC", is_active: bool = True) -> int:
         from database.connection import db_connection
 
         db_connection.execute_query(
             "INSERT INTO Buses (Number, Departure_Place, Destination, DepartureDate, DepartureTime, Capacity, Direction, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             (
-                "БУС-BC",
+                number,
                 "Москва",
                 "Переславль-Залесский",
                 "2024-01-15",
                 "10:00",
                 30,
                 "Туда",
-                True,
+                is_active,
             ),
         )
         row = db_connection.execute_query(
-            "SELECT ID FROM Buses WHERE Number = ?", ("БУС-BC",), fetch_one=True
+            "SELECT ID FROM Buses WHERE Number = ?", (number,), fetch_one=True
         )
         return row[0]
 
@@ -86,6 +86,29 @@ class TestBroadcastChiefFlow:
 
         # 4. Проверяем наличие автобуса у шефа2
         assert bus_service.get_buses_by_chief(other_chief.id) == []
+
+    def test_chief_sees_inactive_assigned_bus_via_bus_owners(self, temp_db):
+        """Неактивный автобус тоже должен быть доступен шефу, если назначен ему"""
+        passenger_service = PassengerService()
+        bus_service = BusService()
+
+        from database.connection import db_connection
+
+        chief, _ = passenger_service.get_or_create_passenger("chief_inactive", "900003")
+        db_connection.execute_query(
+            "UPDATE Passengers SET Role = ? WHERE ID = ?", ("chief", chief.id)
+        )
+
+        bus_id = self._insert_bus(number="БУС-INACTIVE", is_active=False)
+        db_connection.execute_query(
+            "INSERT INTO BusOwners (BusID, ChiefID) VALUES (?, ?)", (bus_id, chief.id)
+        )
+
+        buses = bus_service.get_buses_by_chief(chief.id)
+
+        assert len(buses) == 1
+        assert buses[0].id == bus_id
+        assert buses[0].is_active is False
 
     def test_get_passengers_for_broadcast_excludes_chief(self, temp_db):
         """В рассылку не попадает сам шеф, даже если у него есть бронь на этом автобусе"""
@@ -247,7 +270,7 @@ class TestBroadcastChiefHandlerIntegration:
         """Текущее подключение к тестовой БД (подменено фикстурой conftest)."""
         return database.connection.db_connection
 
-    def _insert_bus(self, number: str = "БУС-H") -> int:
+    def _insert_bus(self, number: str = "БУС-H", is_active: bool = True) -> int:
         """Добавляем автобус и возвращаем его ID."""
         db = self._db()
         db.execute_query(
@@ -260,7 +283,7 @@ class TestBroadcastChiefHandlerIntegration:
                 "10:00",
                 30,
                 "Туда",
-                True,
+                is_active,
             ),
         )
         row = db.execute_query(
@@ -406,6 +429,28 @@ class TestBroadcastChiefHandlerIntegration:
         query.edit_message_text.assert_awaited_once()
         call = query.edit_message_text.await_args
         # edit_message_text(text, reply_markup=...) — текст может быть позиционным аргументом
+        title = call.args[0] if call.args else call.kwargs.get("text")
+        assert title == "Выберите автобус:"
+        assert call.kwargs.get("reply_markup") is not None
+
+    @pytest.mark.asyncio
+    async def test_broadcast_command_chief_sees_inactive_bus_keyboard(self, temp_db):
+        """Шеф видит неактивный назначенный автобус в меню рассылки."""
+        chief_id = self._make_chief_in_db("chief_menu_inactive", "920021")
+        bus_id = self._insert_bus("БУС-INACTIVE-MENU", is_active=False)
+        self._db().execute_query(
+            "INSERT INTO BusOwners (BusID, ChiefID) VALUES (?, ?)", (bus_id, chief_id)
+        )
+
+        handler = BroadcastChiefHandler()
+        update, query = self._callback_update("chief_menu_inactive", 920021, "cmd")
+        ctx = self._context()
+
+        await handler.broadcast_command(update, ctx)
+
+        query.answer.assert_awaited_once()
+        query.edit_message_text.assert_awaited_once()
+        call = query.edit_message_text.await_args
         title = call.args[0] if call.args else call.kwargs.get("text")
         assert title == "Выберите автобус:"
         assert call.kwargs.get("reply_markup") is not None

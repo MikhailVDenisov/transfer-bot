@@ -624,6 +624,28 @@ class TestExportHandler:
             mock_update_with_callback.callback_query.edit_message_text.assert_called_once()
 
     @pytest.mark.asyncio
+    async def test_show_chief_export_menu_includes_inactive_bus(
+        self, handler, mock_update_with_callback, mock_context
+    ):
+        """Шеф видит в меню выгрузки и неактивный назначенный автобус"""
+        mock_passenger = PassengerFactory.build(role="chief", id=5)
+        mock_buses = [BusFactory.build(id=1, number="БУС-001", is_active=False)]
+
+        with (
+            patch.object(
+                handler, "get_or_create_passenger", return_value=mock_passenger
+            ),
+            patch.object(
+                handler.bus_service, "get_buses_by_chief", return_value=mock_buses
+            ),
+        ):
+            await handler.show_chief_export_menu(
+                mock_update_with_callback, mock_context
+            )
+
+            mock_update_with_callback.callback_query.edit_message_text.assert_called_once()
+
+    @pytest.mark.asyncio
     async def test_export_chief_bus_passengers_success(
         self, handler, mock_update_with_callback, mock_context
     ):
