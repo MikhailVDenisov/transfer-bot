@@ -2,10 +2,20 @@
 # Удобные команды для разработки проекта
 
 # Переменные
-PYTHON := python3
-PIP := pip
-PYTEST := pytest
+ifneq ("$(wildcard .venv/bin/python)","")
 VENV_DIR := .venv
+else ifneq ("$(wildcard venv/bin/python)","")
+VENV_DIR := venv
+endif
+
+ifdef VENV_DIR
+PYTHON := $(VENV_DIR)/bin/python
+else
+PYTHON := python3
+endif
+
+PIP := $(PYTHON) -m pip
+PYTEST := $(PYTHON) -m pytest
 PROJECT_NAME := transfer-bot
 
 # Цвета для вывода
@@ -164,7 +174,7 @@ db-init:
 
 db-backup:
 	@echo "$(BLUE)Создание резервной копии базы данных...$(RESET)"
-	$(PYTHON) -m database.backup
+	./scripts/backup_transfer_bot_db.sh
 	@echo "$(GREEN)✅ Резервная копия создана!$(RESET)"
 
 # Сборка

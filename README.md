@@ -127,8 +127,11 @@ python -c "from database.init_db import init_database; init_database()"
 # Через Makefile
 make db-backup
 
-# Или прямой запуск с указанием пути к базе
-python -m database.backup --db-path transfer-bot.db --backup-dir backups --keep 7
+# Или прямой запуск shell-скрипта
+./scripts/backup_transfer_bot_db.sh
+
+# С кастомными параметрами
+DB_PATH=transfer_bot.db BACKUP_DIR=backups/sqlite KEEP_DAYS=7 ./scripts/backup_transfer_bot_db.sh
 ```
 
 7. Запустите бота:
