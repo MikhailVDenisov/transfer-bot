@@ -253,7 +253,18 @@ class BroadcastChiefHandler(BaseHandler):
                 return
 
             bus_description = context.user_data.get("bus_description")
-            preview_message = f"Сообщение от @{passenger.telegram_username} - шефа автобуса {bus_description}: "
+            chief_nickname = (
+                f"@{passenger.telegram_username}"
+                if passenger.telegram_username
+                else "(ник не указан)"
+            )
+            preview_message = (
+                f"Сообщение от {chief_nickname} - шефа автобуса {bus_description}: "
+            )
+            reply_instruction_message = (
+                "Для ответа на сообщение напишите в личные сообщения "
+                f"шефу автобуса {chief_nickname}"
+            )
 
             await query.edit_message_reply_markup(reply_markup=None)
             await query.message.reply_text("Начинаю рассылку...")
@@ -265,6 +276,7 @@ class BroadcastChiefHandler(BaseHandler):
                 source_chat_id,
                 source_message_id,
                 preview_message,
+                reply_instruction_message,
             )
 
             self.clear_context(context)

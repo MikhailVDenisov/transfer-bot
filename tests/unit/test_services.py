@@ -676,6 +676,31 @@ class TestBroadcastService:
         assert bot.copy_message.await_count == 2
 
     @pytest.mark.asyncio
+    async def test_send_broadcast_sends_reply_instruction_after_copy(self):
+        """После сообщения шефа отправляется подсказка, как ответить в личку."""
+        service = BroadcastService()
+        passengers = [PassengerFactory.build(chat_id="100")]
+        bot = Mock()
+        bot.send_message = AsyncMock()
+        bot.copy_message = AsyncMock()
+
+        with patch("services.broadcast_service.asyncio.sleep", new_callable=AsyncMock):
+            counts = await service.send_broadcast(
+                bot,
+                passengers,
+                100,
+                42,
+                "preview",
+                "reply instruction",
+            )
+
+        assert counts == BroadcastStats(1, 0, 0)
+        assert bot.send_message.await_count == 2
+        assert bot.send_message.await_args_list[0].kwargs["text"] == "preview"
+        assert bot.send_message.await_args_list[1].kwargs["text"] == "reply instruction"
+        assert bot.copy_message.await_count == 1
+
+    @pytest.mark.asyncio
     async def test_send_broadcast_empty_list(self):
         """Пустой список пассажиров — нули в статистике"""
         service = BroadcastService()

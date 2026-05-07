@@ -1337,6 +1337,11 @@ class TestBroadcastChiefHandler:
             100,
             200,
             ANY,
+            ANY,
+        )
+        assert (
+            "Для ответа на сообщение напишите в личные сообщения шефу автобуса"
+            in send_bc.call_args.args[5]
         )
         assert "broadcast_mode" not in mock_context.user_data
         assert "broadcast_message" not in mock_context.user_data
@@ -1391,6 +1396,11 @@ class TestBroadcastChiefHandler:
             100,
             200,
             ANY,
+            ANY,
+        )
+        assert (
+            "Для ответа на сообщение напишите в личные сообщения шефу автобуса"
+            in send_bc.call_args.args[5]
         )
 
     @pytest.mark.asyncio

@@ -48,6 +48,7 @@ class BroadcastService:
         source_chat_id,
         source_message_id,
         preview_message,
+        reply_instruction_message: str | None = None,
     ) -> BroadcastStats:
 
         sent_count = 0
@@ -67,6 +68,11 @@ class BroadcastService:
                     message_id=source_message_id,
                     reply_markup=create_back_keyboard("Вернуться в меню"),
                 )
+                if reply_instruction_message:
+                    await bot.send_message(
+                        chat_id=passenger.chat_id,
+                        text=reply_instruction_message,
+                    )
                 sent_count += 1
 
                 # Небольшая пауза помогает не упереться в rate limits
