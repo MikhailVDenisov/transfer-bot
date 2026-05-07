@@ -6,7 +6,7 @@ import logging
 from typing import List, Optional, Tuple
 
 from database.repositories import ReservationRepository, WaitingListRepository
-from models.entities import Bus, Passenger, Reservation
+from models.entities import Bus, Passenger, Reservation, WaitingListRecord
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +66,10 @@ class BookingService:
     def get_user_bookings(self, passenger: Passenger) -> List[Reservation]:
         """Получает бронирования пользователя"""
         return self.reservation_repository.get_by_passenger(passenger.id)
+
+    def get_user_waiting_records(self, passenger: Passenger) -> List[WaitingListRecord]:
+        """Получает активные записи пользователя в листе ожидания"""
+        return self.waiting_repository.get_by_passenger(passenger.id)
 
     def has_active_bookings(self, passenger: Passenger) -> bool:
         """Проверяет, есть ли у пользователя активные бронирования"""

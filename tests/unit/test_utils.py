@@ -6,7 +6,7 @@ import pytest
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup
 
 from models.entities import Bus, Reservation
-from tests.factories import BusFactory, ReservationFactory
+from tests.factories import BusFactory, ReservationFactory, WaitingListRecordFactory
 from utils.const import (
     BROADCAST_CHIEF_CANCEL,
     BROADCAST_CHIEF_SELECT_BUS,
@@ -520,6 +520,26 @@ class TestMessages:
         result = format_user_bookings_message([], [])
 
         assert result == "Вы не записаны ни на один автобус"
+
+    def test_format_user_bookings_message_with_waiting_list(self):
+        """Тест форматирования сообщения со статусом листа ожидания"""
+        buses = [
+            BusFactory.build(
+                id=10,
+                number="БУС-777",
+                departure_date="2024-01-15",
+                departure_time="11:30",
+                departure_place="Москва",
+                destination="Переславль-Залесский",
+                direction="Туда",
+            )
+        ]
+        waiting_records = [WaitingListRecordFactory.build(bus_id=10)]
+
+        result = format_user_bookings_message([], buses, waiting_records)
+
+        assert "Вы в листе ожидания" in result
+        assert "БУС-777" in result
 
 
 class TestValidators:

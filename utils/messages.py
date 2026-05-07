@@ -2,10 +2,10 @@
 Утилиты для форматирования сообщений
 """
 
-from typing import List
+from typing import List, Optional
 
 from config.settings import MESSAGES
-from models.entities import Bus, Passenger, Reservation
+from models.entities import Bus, Passenger, Reservation, WaitingListRecord
 
 
 def format_bus_info(bus: Bus, booked_count: int) -> str:
@@ -17,6 +17,17 @@ def format_bus_info(bus: Bus, booked_count: int) -> str:
 
 def format_booking_info(reservation: Reservation, bus: Bus) -> str:
     """Форматирует информацию о бронировании"""
+    return (
+        f"Автобус: {bus.number} ({bus.departure_date} {bus.departure_time}) "
+        f"({bus.departure_place}-{bus.destination})-{bus.direction}"
+    )
+
+
+def format_waiting_info(record: WaitingListRecord, bus: Optional[Bus]) -> str:
+    """Форматирует информацию о записи в листе ожидания"""
+    if not bus:
+        return f"Автобус: ID {record.bus_id}"
+
     return (
         f"Автобус: {bus.number} ({bus.departure_date} {bus.departure_time}) "
         f"({bus.departure_place}-{bus.destination})-{bus.direction}"
@@ -54,19 +65,33 @@ def format_buses_list_message(
 
 
 def format_user_bookings_message(
-    reservations: List[Reservation], buses: List[Bus]
+    reservations: List[Reservation],
+    buses: List[Bus],
+    waiting_records: Optional[List[WaitingListRecord]] = None,
 ) -> str:
-    """Форматирует сообщение с бронированиями пользователя"""
-    if not reservations:
+    """Форматирует сообщение с бронированиями и листом ожидания пользователя"""
+    waiting_records = waiting_records or []
+    if not reservations and not waiting_records:
         return MESSAGES["no_bookings"]
 
-    message = "Ваши записи:\n\n"
-    for res in reservations:
-        bus = next((b for b in buses if b.id == res.bus_id), None)
-        if bus:
-            message += format_booking_info(res, bus) + "\n"
+    sections = ["Бронирования"]
 
-    return message
+    if reservations:
+        bookings_message = "Ваши записи:\n\n"
+        for res in reservations:
+            bus = next((b for b in buses if b.id == res.bus_id), None)
+            if bus:
+                bookings_message += format_booking_info(res, bus) + "\n"
+        sections.append(bookings_message.strip())
+
+    if waiting_records:
+        waiting_message = "Вы в листе ожидания:\n\n"
+        for record in waiting_records:
+            bus = next((b for b in buses if b.id == record.bus_id), None)
+            waiting_message += format_waiting_info(record, bus) + "\n"
+        sections.append(waiting_message.strip())
+
+    return "\n\n".join(sections)
 
 
 def format_personal_data_confirmation_message(personal_data: dict) -> str:

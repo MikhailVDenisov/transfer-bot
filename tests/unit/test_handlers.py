@@ -19,7 +19,12 @@ from handlers.view_booking_handler import ViewBookingHandler
 from handlers.waiting_list_handler import WaitingListHandler
 from models.entities import Bus, Passenger, Reservation
 from services.broadcast_service import BroadcastStats
-from tests.factories import BusFactory, PassengerFactory, ReservationFactory
+from tests.factories import (
+    BusFactory,
+    PassengerFactory,
+    ReservationFactory,
+    WaitingListRecordFactory,
+)
 from utils.const import BROADCAST_CHIEF_SELECT_BUS, BROADCAST_CHIEF_SEND
 
 
@@ -288,12 +293,43 @@ class TestViewBookingHandler:
                 "get_user_bookings",
                 return_value=mock_reservations,
             ),
+            patch.object(
+                handler.booking_service, "get_user_waiting_records", return_value=[]
+            ),
             patch.object(handler.bus_service, "get_all_buses", return_value=mock_buses),
         ):
 
             await handler.view_bookings(mock_update_with_callback, mock_context)
 
             mock_update_with_callback.callback_query.edit_message_text.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_view_bookings_shows_waiting_list_status(
+        self, handler, mock_update_with_callback, mock_context
+    ):
+        """Тест отображения статуса листа ожидания при отсутствии брони"""
+        mock_passenger = PassengerFactory.build()
+        mock_buses = [BusFactory.build(id=1, number="БУС-001")]
+        waiting_records = [WaitingListRecordFactory.build(bus_id=1)]
+
+        with (
+            patch.object(
+                handler, "get_or_create_passenger", return_value=mock_passenger
+            ),
+            patch.object(handler.booking_service, "get_user_bookings", return_value=[]),
+            patch.object(
+                handler.booking_service,
+                "get_user_waiting_records",
+                return_value=waiting_records,
+            ),
+            patch.object(handler.bus_service, "get_all_buses", return_value=mock_buses),
+        ):
+            await handler.view_bookings(mock_update_with_callback, mock_context)
+
+            edit_call = mock_update_with_callback.callback_query.edit_message_text
+            edit_call.assert_called_once()
+            message_text = edit_call.call_args.args[0]
+            assert "Вы в листе ожидания" in message_text
 
     @pytest.mark.asyncio
     async def test_cancel_booking_menu_no_bookings(
