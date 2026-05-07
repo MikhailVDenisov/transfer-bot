@@ -372,6 +372,34 @@ class PersonalDataHandler(BaseHandler):
                 )
             return ConversationHandler.END
 
+    async def edit_personal_data_before_confirm(
+        self, update: Update, context: ContextTypes.DEFAULT_TYPE
+    ) -> int:
+        """Возвращает пользователя к редактированию данных с шага фамилии"""
+        try:
+            query = update.callback_query
+            await query.answer()
+
+            personal_data = context.user_data.get("personal_data")
+            if not personal_data:
+                return await self._start_flow(update, context)
+
+            await self._remove_reply_keyboard(update)
+            await query.edit_message_text(
+                self._format_prompt(
+                    MESSAGES["personal_data_intro"],
+                    MESSAGES["personal_data_last_name"],
+                    personal_data.get("last_name"),
+                )
+            )
+            return PERSONAL_LAST_NAME
+
+        except Exception as e:
+            logger.error(f"Ошибка в edit_personal_data_before_confirm: {str(e)}")
+            self._reset_personal_data_state(context)
+            await self.send_error_message(update, "Ошибка при редактировании данных")
+            return ConversationHandler.END
+
     async def cancel(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """Отменяет ввод персональных данных"""
         self._reset_personal_data_state(context)

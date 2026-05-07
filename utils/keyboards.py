@@ -199,8 +199,11 @@ def create_personal_data_confirm_keyboard() -> InlineKeyboardMarkup:
     keyboard = [
         [
             InlineKeyboardButton(
+                "Редактировать", callback_data="personal_data_confirm_edit"
+            ),
+            InlineKeyboardButton(
                 "Подтвердить данные", callback_data="personal_data_confirm_save"
-            )
+            ),
         ]
     ]
     return InlineKeyboardMarkup(keyboard)

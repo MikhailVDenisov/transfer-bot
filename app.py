@@ -136,9 +136,13 @@ class TransferBot:
                 ],
                 PERSONAL_CONFIRM: [
                     CallbackQueryHandler(
+                        self.personal_data_handler.edit_personal_data_before_confirm,
+                        pattern="^personal_data_confirm_edit$",
+                    ),
+                    CallbackQueryHandler(
                         self.personal_data_handler.confirm_personal_data,
                         pattern="^personal_data_confirm_save$",
-                    )
+                    ),
                 ],
             },
             fallbacks=[

@@ -13,7 +13,7 @@ from handlers.broadcast_chief_handler import BroadcastChiefHandler
 from handlers.callback_handler import CallbackHandler
 from handlers.export_handler import ExportHandler
 from handlers.info_handler import InfoHandler
-from handlers.personal_data_handler import PersonalDataHandler
+from handlers.personal_data_handler import PERSONAL_LAST_NAME, PersonalDataHandler
 from handlers.start_handler import StartHandler
 from handlers.view_booking_handler import ViewBookingHandler
 from handlers.waiting_list_handler import WaitingListHandler
@@ -760,6 +760,32 @@ class TestPersonalDataHandler:
         )
         assert len(reply_markup.inline_keyboard) == 1
         assert reply_markup.inline_keyboard[0][0].text == "Назад"
+
+    @pytest.mark.asyncio
+    async def test_edit_personal_data_before_confirm_returns_to_last_name_step(
+        self, handler, mock_update_with_callback, mock_context
+    ):
+        mock_update_with_callback.message = None
+        mock_context.user_data = {
+            "personal_data": {
+                "last_name": "Иванов",
+                "first_name": "Иван",
+            }
+        }
+        mock_update_with_callback.callback_query.message = Mock(spec=Message)
+        mock_update_with_callback.callback_query.message.reply_text = AsyncMock()
+
+        state = await handler.edit_personal_data_before_confirm(
+            mock_update_with_callback, mock_context
+        )
+
+        assert state == PERSONAL_LAST_NAME
+        mock_update_with_callback.callback_query.answer.assert_called_once()
+        mock_update_with_callback.callback_query.edit_message_text.assert_called_once()
+        prompt_text = (
+            mock_update_with_callback.callback_query.edit_message_text.call_args.args[0]
+        )
+        assert "Текущее значение: Иванов" in prompt_text
 
 
 class TestCallbackHandler:

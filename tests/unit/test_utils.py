@@ -265,9 +265,14 @@ class TestKeyboards:
         keyboard = create_personal_data_confirm_keyboard()
 
         assert isinstance(keyboard, InlineKeyboardMarkup)
-        assert keyboard.inline_keyboard[0][0].text == "Подтвердить данные"
+        assert len(keyboard.inline_keyboard[0]) == 2
+        assert keyboard.inline_keyboard[0][0].text == "Редактировать"
         assert (
-            keyboard.inline_keyboard[0][0].callback_data == "personal_data_confirm_save"
+            keyboard.inline_keyboard[0][0].callback_data == "personal_data_confirm_edit"
+        )
+        assert keyboard.inline_keyboard[0][1].text == "Подтвердить данные"
+        assert (
+            keyboard.inline_keyboard[0][1].callback_data == "personal_data_confirm_save"
         )
 
     def test_create_personal_data_view_keyboard(self):
@@ -306,8 +311,8 @@ class TestKeyboards:
     def test_create_chief_buses_keyboard(self):
         """Тест создания клавиатуры с автобусами для рассылки шефа"""
         buses = [
-            BusFactory.build(id=1, number="БУС-001", destination="Переславль"),
-            BusFactory.build(id=2, number="БУС-002", destination="Москва"),
+            BusFactory.build(id=1, number="БУС-001", direction="Переславль"),
+            BusFactory.build(id=2, number="БУС-002", direction="Москва"),
         ]
 
         keyboard = create_chief_buses_keyboard(buses)

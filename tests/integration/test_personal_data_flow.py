@@ -106,6 +106,46 @@ class TestPersonalDataFlow:
         assert passenger.citizenship == "РФ"
         assert passenger.personal_data_confirmed is True
 
+    async def test_edit_personal_data_on_confirmation_step(self, context):
+        """Возвращает к вводу фамилии по кнопке редактирования на шаге подтверждения"""
+        username = "edit_on_confirm_user"
+        handler = PersonalDataHandler()
+        passenger_service = PassengerService()
+        passenger_service.get_or_create_passenger(username, "123456789")
+
+        start_update = build_callback_update(username, "personal_data_edit")
+        state = await handler.start_flow(start_update, context)
+        assert state == PERSONAL_LAST_NAME
+
+        steps = [
+            ("Иванов", handler.handle_last_name, PERSONAL_FIRST_NAME),
+            ("Иван", handler.handle_first_name, PERSONAL_PATRONYMIC),
+            ("Иванович", handler.handle_patronymic, PERSONAL_PHONE),
+            ("+79001234567", handler.handle_phone, PERSONAL_BIRTH_DATE),
+            ("01.01.1990", handler.handle_birth_date, PERSONAL_PASSPORT),
+            ("1234 567890", handler.handle_passport, PERSONAL_CITIZENSHIP),
+            ("РФ", handler.handle_citizenship, PERSONAL_CONFIRM),
+        ]
+
+        for text, step_handler, expected_state in steps:
+            message_update = build_message_update(username, text)
+            state = await step_handler(message_update, context)
+            assert state == expected_state
+
+        edit_update = build_callback_update(username, "personal_data_confirm_edit")
+        state = await handler.edit_personal_data_before_confirm(edit_update, context)
+
+        assert state == PERSONAL_LAST_NAME
+        edit_update.callback_query.edit_message_text.assert_called_once()
+        prompt_text = edit_update.callback_query.edit_message_text.call_args.args[0]
+        assert "Текущее значение: Иванов" in prompt_text
+        assert context.user_data["personal_data"]["last_name"] == "Иванов"
+
+        change_last_name_update = build_message_update(username, "Петров")
+        state = await handler.handle_last_name(change_last_name_update, context)
+        assert state == PERSONAL_FIRST_NAME
+        assert context.user_data["personal_data"]["last_name"] == "Петров"
+
     async def test_show_personal_data_for_confirmed_passenger(self, context):
         """Показывает экран просмотра, если данные уже подтверждены"""
         username = "confirmed_user"
