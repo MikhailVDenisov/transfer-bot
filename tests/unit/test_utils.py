@@ -176,6 +176,38 @@ class TestKeyboards:
         assert any("БУС-001" in text for text in button_texts)
         assert "Назад" in button_texts
 
+    def test_create_booking_cancel_keyboard_keeps_cancel_for_hidden_bus(self):
+        """Даже если автобус недоступен в списке, кнопка отмены остается."""
+        reservations = [ReservationFactory.build(id=1, bus_id=999, direction="Туда")]
+
+        keyboard = create_booking_cancel_keyboard(reservations, buses=[])
+
+        assert isinstance(keyboard, InlineKeyboardMarkup)
+        assert len(keyboard.inline_keyboard) == 2  # 1 бронь + кнопка "Назад"
+        assert keyboard.inline_keyboard[0][0].callback_data == "cancel_reservation_1"
+        assert "Направление: Туда" in keyboard.inline_keyboard[0][0].text
+        assert "бронирование закрыто" in keyboard.inline_keyboard[0][0].text
+
+    def test_create_booking_cancel_keyboard_inactive_bus_has_full_text_and_closed(self):
+        """Для неактивного автобуса сохраняем полный текст и дописываем статус."""
+        buses = [
+            BusFactory.build(
+                id=1,
+                number="БУС-001",
+                departure_date="2024-01-15",
+                departure_time="10:00",
+                direction="Туда",
+                is_active=False,
+            )
+        ]
+        reservations = [ReservationFactory.build(id=1, bus_id=1, direction="Туда")]
+
+        keyboard = create_booking_cancel_keyboard(reservations, buses)
+
+        button_text = keyboard.inline_keyboard[0][0].text
+        assert "Автобус БУС-001 (2024-01-15 10:00) Направление: Туда" in button_text
+        assert button_text.endswith("(бронирование закрыто)")
+
     def test_create_waiting_list_keyboard(self):
         """Тест создания клавиатуры для листа ожидания"""
         buses = [
@@ -540,6 +572,15 @@ class TestMessages:
 
         assert "Вы в листе ожидания" in result
         assert "БУС-777" in result
+
+    def test_format_user_bookings_message_with_hidden_bus_booking(self):
+        """Скрытый/закрытый автобус не должен прятать бронь из сообщения."""
+        reservations = [ReservationFactory.build(bus_id=999)]
+
+        result = format_user_bookings_message(reservations, [])
+
+        assert "Ваши записи:" in result
+        assert "Автобус ID 999 (бронирование закрыто)" in result
 
 
 class TestValidators:

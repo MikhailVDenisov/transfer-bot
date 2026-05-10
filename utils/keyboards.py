@@ -124,14 +124,27 @@ def create_booking_cancel_keyboard(
     for res in reservations:
         bus = next((b for b in buses if b.id == res.bus_id), None)
         if bus:
-            button_text = f"Автобус {bus.number} ({bus.departure_date} {bus.departure_time}) Направление: {bus.direction}"
-            keyboard.append(
-                [
-                    InlineKeyboardButton(
-                        button_text, callback_data=f"cancel_reservation_{res.id}"
-                    )
-                ]
+            button_text = (
+                f"Автобус {bus.number} ({bus.departure_date} {bus.departure_time}) "
+                f"Направление: {bus.direction}"
             )
+            if not bus.is_active:
+                button_text += " (бронирование закрыто)"
+        else:
+            # Оставляем возможность отмены, даже если автобус скрыт/недоступен для бронирования.
+            direction = res.direction or "не указано"
+            button_text = (
+                f"Автобус ID {res.bus_id} Направление: {direction} "
+                "(бронирование закрыто)"
+            )
+
+        keyboard.append(
+            [
+                InlineKeyboardButton(
+                    button_text, callback_data=f"cancel_reservation_{res.id}"
+                )
+            ]
+        )
 
     keyboard.append([InlineKeyboardButton("Назад", callback_data="back_to_menu")])
     return InlineKeyboardMarkup(keyboard)

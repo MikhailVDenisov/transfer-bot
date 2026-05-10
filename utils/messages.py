@@ -82,6 +82,8 @@ def format_user_bookings_message(
             bus = next((b for b in buses if b.id == res.bus_id), None)
             if bus:
                 bookings_message += format_booking_info(res, bus) + "\n"
+            else:
+                bookings_message += f"Автобус ID {res.bus_id} (бронирование закрыто)\n"
         sections.append(bookings_message.strip())
 
     if waiting_records:
