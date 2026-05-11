@@ -3,6 +3,7 @@
 """
 
 import sqlite3
+from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
@@ -474,6 +475,49 @@ class TestWaitingListService:
             assert len(records) == 3
             assert all(record.bus_id == 1 for record in records)
 
+    def test_remove_from_waiting_list_success(self):
+        """Тест успешного удаления из листа ожидания"""
+        service = WaitingListService()
+        mock_passenger = PassengerFactory.build()
+        mock_bus = BusFactory.build()
+        mock_records = [WaitingListRecordFactory.build(bus_id=mock_bus.id)]
+
+        with (
+            patch.object(
+                service.waiting_repository,
+                "get_by_passenger_and_bus",
+                return_value=mock_records,
+            ),
+            patch.object(
+                service.waiting_repository, "delete_by_passenger_and_bus"
+            ) as mock_delete,
+        ):
+            result = service.remove_from_waiting_list(mock_passenger, mock_bus)
+
+            assert result is True
+            mock_delete.assert_called_once_with(mock_passenger.id, mock_bus.id)
+
+    def test_remove_from_waiting_list_not_found(self):
+        """Тест удаления из листа ожидания при отсутствии записи"""
+        service = WaitingListService()
+        mock_passenger = PassengerFactory.build()
+        mock_bus = BusFactory.build()
+
+        with (
+            patch.object(
+                service.waiting_repository,
+                "get_by_passenger_and_bus",
+                return_value=[],
+            ),
+            patch.object(
+                service.waiting_repository, "delete_by_passenger_and_bus"
+            ) as mock_delete,
+        ):
+            result = service.remove_from_waiting_list(mock_passenger, mock_bus)
+
+            assert result is False
+            mock_delete.assert_not_called()
+
     def test_confirm_waiting_booking_success(self):
         """Тест успешного подтверждения брони из листа ожидания"""
         service = WaitingListService()
@@ -524,6 +568,108 @@ class TestWaitingListService:
             result = service.confirm_waiting_booking(mock_passenger, mock_bus)
 
             assert result is False
+
+    def test_process_waiting_list_moves_expired_notification_to_end(self):
+        """Просроченное приглашение сбрасывается и уступает место следующему в очереди"""
+        service = WaitingListService()
+        now = datetime.now()
+        expired_time = (now - timedelta(minutes=11)).strftime("%Y-%m-%d %H:%M:%S")
+        next_time = (now - timedelta(minutes=10)).strftime("%Y-%m-%d %H:%M:%S")
+
+        bus = BusFactory.build(id=1, capacity=10, is_active=True)
+        first_wait = WaitingListRecordFactory.build(
+            id=101,
+            bus_id=1,
+            request_time=expired_time,
+            status="Waiting",
+            notification_sent="Yes",
+            notification_sent_at=expired_time,
+        )
+        second_wait = WaitingListRecordFactory.build(
+            id=102,
+            bus_id=1,
+            request_time=next_time,
+            status="Waiting",
+            notification_sent="No",
+        )
+
+        with (
+            patch.object(service.bus_repository, "get_all", return_value=[bus]),
+            patch.object(service.reservation_repository, "get_all", return_value=[]),
+            patch.object(
+                service.waiting_repository,
+                "get_waiting_records",
+                return_value=[first_wait, second_wait],
+            ),
+            patch.object(service.passenger_repository, "get_all", return_value=[]),
+            patch.object(
+                service.waiting_repository, "update_notification"
+            ) as mock_update_notification,
+            patch.object(
+                service.waiting_repository, "update_request_time"
+            ) as mock_update_request_time,
+            patch.object(
+                service, "_send_waiting_notification"
+            ) as mock_send_notification,
+        ):
+            service.process_waiting_list(application=Mock())
+
+            mock_update_notification.assert_called_once_with(101, "No")
+            mock_update_request_time.assert_called_once()
+            assert mock_update_request_time.call_args.args[0] == 101
+            mock_send_notification.assert_called_once()
+            assert mock_send_notification.call_args.args[1] == second_wait
+
+    def test_process_waiting_list_skips_user_without_chat_id(self):
+        """Если у первого нет chat_id, уведомление должно уйти следующему в очереди"""
+        service = WaitingListService()
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        bus = BusFactory.build(id=1, capacity=10, is_active=True)
+        first_wait = WaitingListRecordFactory.build(
+            id=201,
+            passenger_id=301,
+            bus_id=1,
+            request_time=now,
+            status="Waiting",
+            notification_sent="No",
+        )
+        second_wait = WaitingListRecordFactory.build(
+            id=202,
+            passenger_id=302,
+            bus_id=1,
+            request_time=now,
+            status="Waiting",
+            notification_sent="No",
+        )
+        first_passenger = PassengerFactory.build(id=301, chat_id=None)
+        second_passenger = PassengerFactory.build(id=302, chat_id="123456")
+
+        def _close_task(coro):
+            coro.close()
+            return None
+
+        with (
+            patch.object(service.bus_repository, "get_all", return_value=[bus]),
+            patch.object(service.reservation_repository, "get_all", return_value=[]),
+            patch.object(
+                service.waiting_repository,
+                "get_waiting_records",
+                return_value=[first_wait, second_wait],
+            ),
+            patch.object(
+                service.passenger_repository,
+                "get_all",
+                return_value=[first_passenger, second_passenger],
+            ),
+            patch("asyncio.create_task", side_effect=_close_task),
+            patch.object(
+                service.waiting_repository, "update_notification"
+            ) as mock_update_notification,
+        ):
+            service.process_waiting_list(application=Mock())
+
+            mock_update_notification.assert_called_once_with(202, "Yes")
 
 
 class TestExportService:

@@ -93,10 +93,12 @@ def init_database():
             RequestTime TEXT,
             Status TEXT DEFAULT 'Waiting',
             NotificationSent TEXT DEFAULT 'No',
+            NotificationSentAt TEXT,
             FOREIGN KEY (PassengerID) REFERENCES Passengers (ID),
             FOREIGN KEY (BusID) REFERENCES Buses (ID)
         )
         """)
+        ensure_column_exists("WaitingList", "NotificationSentAt", "TEXT")
 
         # Создание таблицы BusOwners
         db_connection.execute_query("""

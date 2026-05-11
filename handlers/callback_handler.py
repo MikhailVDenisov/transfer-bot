@@ -93,6 +93,12 @@ class CallbackHandler:
                     update, context, bus_id
                 )
 
+            elif callback_data.startswith("remove_waiting_bus_"):
+                bus_id = int(callback_data.split("_", 3)[3])
+                await self.waiting_list_handler.remove_from_waiting_list(
+                    update, context, bus_id
+                )
+
             elif callback_data == "render_faq":
                 await self.info_handler.show_faq(update, context)
 

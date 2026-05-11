@@ -439,6 +439,29 @@ class TestWaitingListHandler:
 
             mock_update_with_callback.callback_query.edit_message_text.assert_called_once()
 
+    @pytest.mark.asyncio
+    async def test_remove_from_waiting_list_success(
+        self, handler, mock_update_with_callback, mock_context
+    ):
+        """Тест успешного удаления из листа ожидания"""
+        mock_passenger = PassengerFactory.build()
+        mock_bus = BusFactory.build()
+
+        with (
+            patch.object(
+                handler, "get_or_create_passenger", return_value=mock_passenger
+            ),
+            patch.object(handler.bus_service, "get_bus_by_id", return_value=mock_bus),
+            patch.object(
+                handler.waiting_service, "remove_from_waiting_list", return_value=True
+            ),
+        ):
+            await handler.remove_from_waiting_list(
+                mock_update_with_callback, mock_context, 1
+            )
+
+            mock_update_with_callback.callback_query.edit_message_text.assert_called_once()
+
 
 class TestInfoHandler:
     """Тесты для InfoHandler"""
@@ -911,6 +934,24 @@ class TestCallbackHandler:
 
             mock_view_bookings.assert_called_once_with(
                 mock_update_with_callback, mock_context
+            )
+
+    @pytest.mark.asyncio
+    async def test_handle_callback_remove_waiting_bus(
+        self, handler, mock_update_with_callback, mock_context
+    ):
+        """Тест обработки callback удаления из листа ожидания"""
+        mock_update_with_callback.callback_query.data = "remove_waiting_bus_3"
+
+        with patch.object(
+            handler.waiting_list_handler,
+            "remove_from_waiting_list",
+            new_callable=AsyncMock,
+        ) as mock_remove:
+            await handler.handle_callback(mock_update_with_callback, mock_context)
+
+            mock_remove.assert_called_once_with(
+                mock_update_with_callback, mock_context, 3
             )
 
     @pytest.mark.asyncio

@@ -335,10 +335,13 @@ class TestKeyboards:
         keyboard = create_confirm_booking_keyboard(bus_id=1)
 
         assert isinstance(keyboard, InlineKeyboardMarkup)
-        assert len(keyboard.inline_keyboard) == 1
+        assert len(keyboard.inline_keyboard) == 2
         assert len(keyboard.inline_keyboard[0]) == 1
         assert keyboard.inline_keyboard[0][0].text == "Подтвердить бронь"
         assert keyboard.inline_keyboard[0][0].callback_data == "select_bus_1"
+        assert len(keyboard.inline_keyboard[1]) == 1
+        assert keyboard.inline_keyboard[1][0].text == "Удалить из листа ожидания"
+        assert keyboard.inline_keyboard[1][0].callback_data == "remove_waiting_bus_1"
 
     def test_create_chief_buses_keyboard(self):
         """Тест создания клавиатуры с автобусами для рассылки шефа"""
@@ -481,7 +484,7 @@ class TestMessages:
 
         result = format_booking_success_message(bus)
 
-        expected = "Вы успешно записаны на автобус: БУС-001 (2024-01-15 10:00) Москва-Переславль-Залесский"
+        expected = "Вы успешно записаны на автобус: БУС-001 (2024-01-15 10:00) Москва-Переславль-Залесский.\nОжидайте сообщения от шефа автобуса ближе к дате отправки"
         assert result == expected
 
     def test_format_waiting_notification_message(self):
@@ -492,7 +495,7 @@ class TestMessages:
 
         result = format_waiting_notification_message(bus)
 
-        expected = "🚌 Место на автобус БУС-001 (2024-01-15 10:00) теперь доступно!\n❗У вас есть 10 минут, чтобы подтвердить бронь, после бот отправит пуш следующему в листе ожидания. \nНажмите кнопку ниже чтобы подтвердить бронь:"
+        expected = "🚌 Место на автобус БУС-001 (2024-01-15 10:00) теперь доступно!\n❗Освободилось место в автобусе. Успей записаться пока не заняли другие. \nНажмите кнопку ниже чтобы подтвердить бронь:"
         assert result == expected
 
     def test_format_buses_list_message(self):

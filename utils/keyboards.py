@@ -234,7 +234,13 @@ def create_confirm_booking_keyboard(bus_id: int) -> InlineKeyboardMarkup:
             InlineKeyboardButton(
                 "Подтвердить бронь", callback_data=f"select_bus_{bus_id}"
             )
-        ]
+        ],
+        [
+            InlineKeyboardButton(
+                "Удалить из листа ожидания",
+                callback_data=f"remove_waiting_bus_{bus_id}",
+            )
+        ],
     ]
     return InlineKeyboardMarkup(keyboard)
 

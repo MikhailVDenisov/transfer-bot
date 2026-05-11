@@ -236,8 +236,15 @@ class WaitingListRepository:
     @staticmethod
     def update_notification(record_id: int, status: str) -> None:
         """Обновляет статус уведомления"""
+        if status == "Yes":
+            db_connection.execute_query(
+                "UPDATE WaitingList SET NotificationSent = ?, NotificationSentAt = ? WHERE ID = ?",
+                (status, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), record_id),
+            )
+            return
+
         db_connection.execute_query(
-            "UPDATE WaitingList SET NotificationSent = ? WHERE ID = ?",
+            "UPDATE WaitingList SET NotificationSent = ?, NotificationSentAt = NULL WHERE ID = ?",
             (status, record_id),
         )
 
@@ -246,6 +253,14 @@ class WaitingListRepository:
         """Обновляет статус записи"""
         db_connection.execute_query(
             "UPDATE WaitingList SET Status = ? WHERE ID = ?", (status, record_id)
+        )
+
+    @staticmethod
+    def update_request_time(record_id: int, request_time: str) -> None:
+        """Обновляет время заявки для перестановки в конец очереди"""
+        db_connection.execute_query(
+            "UPDATE WaitingList SET RequestTime = ? WHERE ID = ?",
+            (request_time, record_id),
         )
 
     @staticmethod

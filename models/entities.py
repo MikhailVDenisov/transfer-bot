@@ -141,6 +141,7 @@ class WaitingListRecord:
     request_time: Optional[str] = None
     status: str = "Waiting"
     notification_sent: str = "No"
+    notification_sent_at: Optional[str] = None
 
     @classmethod
     def from_tuple(cls, data: tuple) -> "WaitingListRecord":
@@ -152,6 +153,7 @@ class WaitingListRecord:
             request_time=data[3],
             status=data[4] if len(data) > 4 else "Waiting",
             notification_sent=data[5] if len(data) > 5 else "No",
+            notification_sent_at=data[6] if len(data) > 6 else None,
         )
 
     def is_waiting(self) -> bool:

@@ -162,10 +162,10 @@ class TransferBot:
             CallbackQueryHandler(self.callback_handler.handle_callback)
         )
 
-        # Обработчик команды /confirm для подтверждения брони из листа ожидания
-        self.application.add_handler(
-            CommandHandler("confirm", self.confirm_waiting_booking)
-        )
+        # # Обработчик команды /confirm для подтверждения брони из листа ожидания
+        # self.application.add_handler(
+        #     CommandHandler("confirm", self.confirm_waiting_booking)
+        # )
 
         # Обработчик команды /wait для добавления в лист ожидания
         self.application.add_handler(CommandHandler("wait", self.add_to_waiting_list))

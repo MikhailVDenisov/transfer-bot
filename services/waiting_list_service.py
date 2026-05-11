@@ -3,10 +3,10 @@
 """
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import List, Optional
 
-from config.settings import NOTIFICATION_TIMEOUT_HOURS
+from config.settings import CONFIRM_TIMEOUT
 from database.repositories import (
     BusRepository,
     PassengerRepository,
@@ -54,6 +54,26 @@ class WaitingListService:
         all_records = self.waiting_repository.get_waiting_records()
         return [record for record in all_records if record.bus_id == bus_id]
 
+    def remove_from_waiting_list(self, passenger: Passenger, bus: Bus) -> bool:
+        """
+        Удаляет пассажира из листа ожидания для конкретного автобуса
+
+        Returns:
+            bool: True если запись(и) были удалены, иначе False
+        """
+        try:
+            existing = self.waiting_repository.get_by_passenger_and_bus(
+                passenger.id, bus.id
+            )
+            if not existing:
+                return False
+
+            self.waiting_repository.delete_by_passenger_and_bus(passenger.id, bus.id)
+            return True
+        except Exception as e:
+            logger.error(f"Ошибка при удалении из листа ожидания: {str(e)}")
+            return False
+
     def process_waiting_list(self, application) -> None:
         """
         Обрабатывает лист ожидания и отправляет уведомления
@@ -84,23 +104,20 @@ class WaitingListService:
             # Группируем ожидающих по автобусам
             bus_waiting_groups = {}
             for wait in waiting_records:
-                if (
-                    wait.is_waiting()
-                    and not wait.is_notification_sent()
-                    and wait.request_time
-                ):
+                if not wait.is_waiting() or not wait.request_time:
+                    continue
 
-                    try:
-                        bus_id = wait.bus_id
-                        if bus_id not in bus_waiting_groups:
-                            bus_waiting_groups[bus_id] = []
+                try:
+                    bus_id = wait.bus_id
+                    if bus_id not in bus_waiting_groups:
+                        bus_waiting_groups[bus_id] = []
 
-                        request_time = datetime.strptime(
-                            wait.request_time, "%Y-%m-%d %H:%M:%S"
-                        )
-                        bus_waiting_groups[bus_id].append((request_time, wait))
-                    except (ValueError, TypeError):
-                        continue
+                    request_time = datetime.strptime(
+                        wait.request_time, "%Y-%m-%d %H:%M:%S"
+                    )
+                    bus_waiting_groups[bus_id].append((request_time, wait))
+                except (ValueError, TypeError):
+                    continue
 
             # Для каждого автобуса с ожидающими и свободными местами
             for bus_id, waiting_list in bus_waiting_groups.items():
@@ -112,20 +129,29 @@ class WaitingListService:
                 if free_places <= 0:
                     continue
 
-                # Берем самого раннего в очереди
-                if waiting_list:
-                    waiting_list.sort(key=lambda x: x[0])
-                    _, wait = waiting_list[0]
+                if not waiting_list:
+                    continue
 
-                    # Проверяем таймаут уведомления
-                    if self._should_reset_notification(wait, current_time):
-                        self.waiting_repository.update_notification(wait.id, "No")
-                        continue
+                waiting_list.sort(key=lambda x: x[0])
 
-                    # Отправляем уведомление
-                    self._send_waiting_notification(
+                # Ищем первого участника, которому нужно отправить уведомление.
+                # Если уведомление просрочено, переносим запись в конец очереди.
+                for _, wait in waiting_list:
+                    if wait.is_notification_sent():
+                        if self._should_reset_notification(wait, current_time):
+                            self.waiting_repository.update_notification(wait.id, "No")
+                            self.waiting_repository.update_request_time(
+                                wait.id, current_time.strftime("%Y-%m-%d %H:%M:%S")
+                            )
+                            continue
+
+                        # У первого участника еще есть активное окно подтверждения
+                        break
+
+                    if self._send_waiting_notification(
                         application, wait, passengers, buses
-                    )
+                    ):
+                        break
 
         except Exception as e:
             logger.exception("Ошибка в process_waiting_list")
@@ -134,13 +160,15 @@ class WaitingListService:
         self, wait: WaitingListRecord, current_time: datetime
     ) -> bool:
         """Проверяет, нужно ли сбросить статус уведомления"""
-        if not wait.request_time or not wait.is_notification_sent():
+        if not wait.notification_sent_at or not wait.is_notification_sent():
             return False
 
         try:
-            request_time = datetime.strptime(wait.request_time, "%Y-%m-%d %H:%M:%S")
-            time_diff = current_time - request_time
-            return time_diff.total_seconds() > (NOTIFICATION_TIMEOUT_HOURS * 3600)
+            notification_sent_at = datetime.strptime(
+                wait.notification_sent_at, "%Y-%m-%d %H:%M:%S"
+            )
+            time_diff = current_time - notification_sent_at
+            return time_diff.total_seconds() > CONFIRM_TIMEOUT
         except (ValueError, TypeError):
             return False
 
@@ -150,7 +178,7 @@ class WaitingListService:
         wait: WaitingListRecord,
         passengers: List[Passenger],
         buses: List[Bus],
-    ):
+    ) -> bool:
         """Отправляет уведомление о свободном месте"""
         try:
             # Находим пассажира и автобус
@@ -183,9 +211,13 @@ class WaitingListService:
                 logger.info(
                     f"Уведомление отправлено пассажиру {passenger.id} для автобуса {bus.id}"
                 )
+                return True
+
+            return False
 
         except Exception as e:
             logger.error(f"Ошибка отправки уведомления: {str(e)}")
+            return False
 
     async def _send_notification_async(
         self, application, chat_id: str, message: str, keyboard

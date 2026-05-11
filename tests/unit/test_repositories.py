@@ -573,6 +573,40 @@ class TestWaitingListRepository:
         assert len(waiting_records) == 1
         assert waiting_records[0].status == "Waiting"
 
+    def test_update_request_time(self):
+        """Тест обновления времени заявки для записи листа ожидания"""
+        from tests.factories import PassengerFactory
+
+        test_passenger = PassengerFactory.build()
+        passenger = PassengerRepository.create(
+            test_passenger.telegram_username, test_passenger.chat_id
+        )
+        from database.connection import db_connection
+
+        db_connection.execute_query(
+            "INSERT INTO Buses (Number, Departure_Place, Destination, DepartureDate, DepartureTime, Capacity, Direction, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                "БУС-001",
+                "Москва",
+                "Переславль-Залесский",
+                "2024-01-15",
+                "10:00",
+                30,
+                "Туда",
+                True,
+            ),
+        )
+        bus = BusRepository.get_all()[0]
+
+        WaitingListRepository.create(passenger.id, bus.id)
+        record_id = WaitingListRepository.get_all()[0].id
+        new_time = "2025-01-01 12:00:00"
+
+        WaitingListRepository.update_request_time(record_id, new_time)
+
+        updated_records = WaitingListRepository.get_all()
+        assert updated_records[0].request_time == new_time
+
     def test_delete_by_passenger_and_bus(self):
         """Удаление по пассажиру и автобусу убирает только активные Waiting-записи"""
         from tests.factories import PassengerFactory
