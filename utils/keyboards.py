@@ -2,7 +2,7 @@
 Утилиты для создания клавиатур
 """
 
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from telegram import (
     InlineKeyboardButton,
@@ -82,15 +82,19 @@ def create_directions_keyboard(directions: List[str]) -> InlineKeyboardMarkup:
 
 
 def create_buses_keyboard(
-    buses: List[Bus], reservations: List[Reservation]
+    buses: List[Bus],
+    reservations: List[Reservation],
+    manual_reserved_by_bus: Optional[Dict[int, int]] = None,
 ) -> InlineKeyboardMarkup:
     """Создает клавиатуру с автобусами"""
     keyboard = []
+    manual_reserved_by_bus = manual_reserved_by_bus or {}
 
     for bus in buses:
         # Подсчитываем занятые места
         booked = len([r for r in reservations if r.bus_id == bus.id])
-        free = bus.capacity - booked
+        manual_reserved_count = manual_reserved_by_bus.get(bus.id, 0)
+        free = max(bus.capacity - booked - manual_reserved_count, 0)
 
         if free > 0:
             keyboard.append(

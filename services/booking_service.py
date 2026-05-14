@@ -5,7 +5,11 @@
 import logging
 from typing import List, Optional, Tuple
 
-from database.repositories import ReservationRepository, WaitingListRepository
+from database.repositories import (
+    ManualReservationRepository,
+    ReservationRepository,
+    WaitingListRepository,
+)
 from models.entities import Bus, Passenger, Reservation, WaitingListRecord
 
 logger = logging.getLogger(__name__)
@@ -17,6 +21,7 @@ class BookingService:
     def __init__(self):
         self.reservation_repository = ReservationRepository()
         self.waiting_repository = WaitingListRepository()
+        self.manual_reservation_repository = ManualReservationRepository()
 
     def can_book_bus(self, passenger: Passenger, bus: Bus) -> Tuple[bool, str]:
         """
@@ -27,7 +32,18 @@ class BookingService:
         """
         # Проверяем, есть ли свободные места
         reservations = self.reservation_repository.get_by_bus(bus.id)
-        if len(reservations) >= bus.capacity:
+        manual_reserved_count = (
+            self.manual_reservation_repository.get_unbooked_count_by_bus(bus.id)
+        )
+
+        occupied_places = len(reservations) + manual_reserved_count
+        if self.manual_reservation_repository.has_unbooked_by_username_and_bus(
+            passenger.telegram_username, bus.id
+        ):
+            # Для владельца ручной резервации освобождаем его зарезервированное место.
+            occupied_places -= 1
+
+        if occupied_places >= bus.capacity:
             return False, "Все места в автобусе уже заняты."
 
         # Проверяем, нет ли уже брони на это направление
@@ -57,6 +73,9 @@ class BookingService:
                 return False
 
             self.reservation_repository.create(passenger.id, bus.id, bus.direction)
+            self.manual_reservation_repository.mark_booked_by_username_and_bus(
+                passenger.telegram_username, bus.id
+            )
             self._sync_waiting_list_after_booking(passenger, bus)
             return True
         except Exception as e:

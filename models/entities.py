@@ -181,3 +181,25 @@ class BusOwner:
     def from_tuple(cls, data: tuple) -> "BusOwner":
         """Создает объект BusOwner из кортежа данных из БД"""
         return cls(id=data[0], bus_id=data[1], chief_id=data[2])
+
+
+@dataclass
+class ManualReservation:
+    """Модель ручной резервации места в автобусе"""
+
+    id: Optional[int] = None
+    telegram_username: Optional[str] = None
+    bus_id: Optional[int] = None
+    is_booked: bool = False
+    created_at: Optional[str] = None
+
+    @classmethod
+    def from_tuple(cls, data: tuple) -> "ManualReservation":
+        """Создает объект ManualReservation из кортежа данных из БД"""
+        return cls(
+            id=data[0],
+            telegram_username=data[1],
+            bus_id=data[2],
+            is_booked=bool(data[3]) if len(data) > 3 else False,
+            created_at=data[4] if len(data) > 4 else None,
+        )

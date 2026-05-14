@@ -30,6 +30,28 @@ class BookingHandler(BaseHandler):
         self.bus_service = BusService()
         self.booking_service = BookingService()
 
+    @staticmethod
+    def _get_manual_reserved_counts_for_passenger(buses, passenger) -> dict:
+        """Возвращает ручные резервации по автобусам с учетом текущего пассажира."""
+        from database.repositories import ManualReservationRepository
+
+        manual_repo = ManualReservationRepository()
+        bus_ids = [bus.id for bus in buses if bus.id is not None]
+        manual_reserved_by_bus = manual_repo.get_unbooked_counts_by_bus(bus_ids)
+
+        username = passenger.telegram_username
+        if not username:
+            return manual_reserved_by_bus
+
+        for bus in buses:
+            if bus.id is None:
+                continue
+            if manual_repo.has_unbooked_by_username_and_bus(username, bus.id):
+                current_count = manual_reserved_by_bus.get(bus.id, 0)
+                manual_reserved_by_bus[bus.id] = max(0, current_count - 1)
+
+        return manual_reserved_by_bus
+
     async def show_directions(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Показывает доступные направления"""
         try:
@@ -106,12 +128,22 @@ class BookingHandler(BaseHandler):
 
             reservation_repo = ReservationRepository()
             all_reservations = reservation_repo.get_all()
+            manual_reserved_by_bus = self._get_manual_reserved_counts_for_passenger(
+                buses, passenger
+            )
 
             # Формируем сообщение
-            message = format_buses_list_message(buses, all_reservations, direction)
+            message = format_buses_list_message(
+                buses,
+                all_reservations,
+                direction,
+                manual_reserved_by_bus=manual_reserved_by_bus,
+            )
 
             # Создаем клавиатуру
-            keyboard = create_buses_keyboard(buses, all_reservations)
+            keyboard = create_buses_keyboard(
+                buses, all_reservations, manual_reserved_by_bus=manual_reserved_by_bus
+            )
 
             await query.edit_message_text(message, reply_markup=keyboard)
 

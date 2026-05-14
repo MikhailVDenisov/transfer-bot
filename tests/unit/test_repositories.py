@@ -7,6 +7,7 @@ import pytest
 from database.repositories import (
     BusOwnerRepository,
     BusRepository,
+    ManualReservationRepository,
     PassengerRepository,
     ReservationRepository,
     WaitingListRepository,
@@ -721,3 +722,62 @@ class TestBusOwnerRepository:
         owner = owners[0]
         assert owner.bus_id == bus.id
         assert owner.chief_id == passenger.id
+
+
+class TestManualReservationRepository:
+    """Тесты для ManualReservationRepository"""
+
+    def test_create_and_count_unbooked(self):
+        """Создание ручной резервации учитывается в количестве свободных мест"""
+        from database.connection import db_connection
+
+        db_connection.execute_query(
+            "INSERT INTO Buses (Number, Departure_Place, Destination, DepartureDate, DepartureTime, Capacity, Direction, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                "БУС-101",
+                "Москва",
+                "Переславль-Залесский",
+                "2024-01-15",
+                "10:00",
+                30,
+                "Туда",
+                True,
+            ),
+        )
+        bus = BusRepository.get_all()[0]
+
+        ManualReservationRepository.create("reserved_user", bus.id, is_booked=False)
+
+        assert ManualReservationRepository.get_unbooked_count_by_bus(bus.id) == 1
+        assert (
+            ManualReservationRepository.has_unbooked_by_username_and_bus(
+                "@reserved_user", bus.id
+            )
+            is True
+        )
+
+    def test_mark_booked_updates_manual_reservation(self):
+        """После фактической брони ручная резервация перестает занимать место"""
+        from database.connection import db_connection
+
+        db_connection.execute_query(
+            "INSERT INTO Buses (Number, Departure_Place, Destination, DepartureDate, DepartureTime, Capacity, Direction, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                "БУС-102",
+                "Москва",
+                "Переславль-Залесский",
+                "2024-01-15",
+                "12:00",
+                30,
+                "Туда",
+                True,
+            ),
+        )
+        bus = BusRepository.get_all()[0]
+
+        ManualReservationRepository.create("reserved_user", bus.id, is_booked=False)
+        ManualReservationRepository.mark_booked_by_username_and_bus(
+            "RESERVED_USER", bus.id
+        )
+
+        assert ManualReservationRepository.get_unbooked_count_by_bus(bus.id) == 0

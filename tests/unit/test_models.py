@@ -4,7 +4,14 @@
 
 import pytest
 
-from models.entities import Bus, BusOwner, Passenger, Reservation, WaitingListRecord
+from models.entities import (
+    Bus,
+    BusOwner,
+    ManualReservation,
+    Passenger,
+    Reservation,
+    WaitingListRecord,
+)
 from tests.factories import (
     BusFactory,
     BusOwnerFactory,
@@ -235,3 +242,18 @@ class TestBusOwner:
         assert owner.id == 1
         assert owner.bus_id == 1
         assert owner.chief_id == 1
+
+
+class TestManualReservation:
+    """Тесты для модели ManualReservation"""
+
+    def test_manual_reservation_from_tuple(self):
+        """Тест создания ручной резервации из кортежа"""
+        data = (1, "reserved_user", 10, 1, "2026-05-11 12:00:00")
+        reservation = ManualReservation.from_tuple(data)
+
+        assert reservation.id == 1
+        assert reservation.telegram_username == "reserved_user"
+        assert reservation.bus_id == 10
+        assert reservation.is_booked is True
+        assert reservation.created_at == "2026-05-11 12:00:00"

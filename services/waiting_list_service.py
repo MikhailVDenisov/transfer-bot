@@ -9,6 +9,7 @@ from typing import List, Optional
 from config.settings import CONFIRM_TIMEOUT
 from database.repositories import (
     BusRepository,
+    ManualReservationRepository,
     PassengerRepository,
     ReservationRepository,
     WaitingListRepository,
@@ -26,6 +27,7 @@ class WaitingListService:
         self.reservation_repository = ReservationRepository()
         self.bus_repository = BusRepository()
         self.passenger_repository = PassengerRepository()
+        self.manual_reservation_repository = ManualReservationRepository()
 
     def add_to_waiting_list(self, passenger: Passenger, bus: Bus) -> bool:
         """
@@ -94,9 +96,11 @@ class WaitingListService:
             # Подсчитываем количество броней для каждого автобуса
             bus_reserved_counts = {}
             for bus in buses:
-                bus_reserved_counts[bus.id] = len(
-                    [r for r in reservations if r.bus_id == bus.id]
+                reserved_count = len([r for r in reservations if r.bus_id == bus.id])
+                reserved_count += (
+                    self.manual_reservation_repository.get_unbooked_count_by_bus(bus.id)
                 )
+                bus_reserved_counts[bus.id] = reserved_count
 
             # Текущее время для проверки таймаута уведомлений
             current_time = datetime.now()
@@ -240,11 +244,23 @@ class WaitingListService:
         try:
             # Проверяем, есть ли свободные места
             reservations = self.reservation_repository.get_by_bus(bus.id)
-            if len(reservations) >= bus.capacity:
+            manual_reserved_count = (
+                self.manual_reservation_repository.get_unbooked_count_by_bus(bus.id)
+            )
+            occupied_places = len(reservations) + manual_reserved_count
+            if self.manual_reservation_repository.has_unbooked_by_username_and_bus(
+                passenger.telegram_username, bus.id
+            ):
+                occupied_places -= 1
+
+            if occupied_places >= bus.capacity:
                 return False
 
             # Создаем бронирование
             self.reservation_repository.create(passenger.id, bus.id, bus.direction)
+            self.manual_reservation_repository.mark_booked_by_username_and_bus(
+                passenger.telegram_username, bus.id
+            )
 
             # Обновляем статус в листе ожидания
             waiting_records = self.waiting_repository.get_by_passenger_and_bus(

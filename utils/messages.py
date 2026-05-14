@@ -2,15 +2,15 @@
 Утилиты для форматирования сообщений
 """
 
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from config.settings import MESSAGES
 from models.entities import Bus, Passenger, Reservation, WaitingListRecord
 
 
-def format_bus_info(bus: Bus, booked_count: int) -> str:
+def format_bus_info(bus: Bus, booked_count: int, manual_reserved_count: int = 0) -> str:
     """Форматирует информацию об автобусе"""
-    free = bus.capacity - booked_count
+    free = max(bus.capacity - booked_count - manual_reserved_count, 0)
     status = f"Свободных мест: {free}" if free > 0 else "Мест нет"
     return f"Автобус {bus.number} ({bus.departure_date} {bus.departure_time}): {status}"
 
@@ -52,14 +52,19 @@ def format_waiting_notification_message(bus: Bus) -> str:
 
 
 def format_buses_list_message(
-    buses: List[Bus], reservations: List[Reservation], direction: str
+    buses: List[Bus],
+    reservations: List[Reservation],
+    direction: str,
+    manual_reserved_by_bus: Optional[Dict[int, int]] = None,
 ) -> str:
     """Форматирует сообщение со списком автобусов"""
     message = f"Доступные автобусы для направления {direction}:\n\n"
+    manual_reserved_by_bus = manual_reserved_by_bus or {}
 
     for bus in buses:
         booked = len([r for r in reservations if r.bus_id == bus.id])
-        message += format_bus_info(bus, booked) + "\n"
+        manual_reserved_count = manual_reserved_by_bus.get(bus.id, 0)
+        message += format_bus_info(bus, booked, manual_reserved_count) + "\n"
 
     return message
 

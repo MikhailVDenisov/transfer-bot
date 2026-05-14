@@ -169,6 +169,31 @@ class TestBusService:
             assert info["free"] == 25
             assert info["is_available"] is True
 
+    def test_get_bus_availability_info_with_manual_reserved_places(self):
+        """Свободные места учитывают ручные резервации"""
+        service = BusService()
+        mock_bus = BusFactory.build(capacity=30)
+        mock_reservations = [ReservationFactory.build() for _ in range(5)]
+
+        with (
+            patch.object(
+                service.reservation_repository,
+                "get_by_bus",
+                return_value=mock_reservations,
+            ),
+            patch.object(
+                service.manual_reservation_repository,
+                "get_unbooked_count_by_bus",
+                return_value=3,
+            ),
+        ):
+            info = service.get_bus_availability_info(mock_bus)
+
+            assert info["capacity"] == 30
+            assert info["booked"] == 8
+            assert info["free"] == 22
+            assert info["is_available"] is True
+
     def test_get_bus_availability_info_full(self):
         """Тест получения информации о полностью занятом автобусе"""
         service = BusService()
@@ -205,6 +230,16 @@ class TestBookingService:
             patch.object(
                 service.reservation_repository, "get_by_passenger", return_value=[]
             ),
+            patch.object(
+                service.manual_reservation_repository,
+                "get_unbooked_count_by_bus",
+                return_value=0,
+            ),
+            patch.object(
+                service.manual_reservation_repository,
+                "has_unbooked_by_username_and_bus",
+                return_value=False,
+            ),
         ):
 
             can_book, error_msg = service.can_book_bus(mock_passenger, mock_bus)
@@ -219,8 +254,51 @@ class TestBookingService:
         mock_bus = BusFactory.build(capacity=30)
         mock_reservations = [ReservationFactory.build() for _ in range(30)]
 
-        with patch.object(
-            service.reservation_repository, "get_by_bus", return_value=mock_reservations
+        with (
+            patch.object(
+                service.reservation_repository,
+                "get_by_bus",
+                return_value=mock_reservations,
+            ),
+            patch.object(
+                service.manual_reservation_repository,
+                "get_unbooked_count_by_bus",
+                return_value=0,
+            ),
+            patch.object(
+                service.manual_reservation_repository,
+                "has_unbooked_by_username_and_bus",
+                return_value=False,
+            ),
+        ):
+            can_book, error_msg = service.can_book_bus(mock_passenger, mock_bus)
+
+            assert can_book is False
+            assert "заняты" in error_msg
+
+    def test_can_book_bus_full_with_manual_reserved_places(self):
+        """Тест: ручные резервации уменьшают доступную вместимость"""
+        service = BookingService()
+        mock_passenger = PassengerFactory.build()
+        mock_bus = BusFactory.build(capacity=30)
+        mock_reservations = [ReservationFactory.build() for _ in range(29)]
+
+        with (
+            patch.object(
+                service.reservation_repository,
+                "get_by_bus",
+                return_value=mock_reservations,
+            ),
+            patch.object(
+                service.manual_reservation_repository,
+                "get_unbooked_count_by_bus",
+                return_value=1,
+            ),
+            patch.object(
+                service.manual_reservation_repository,
+                "has_unbooked_by_username_and_bus",
+                return_value=False,
+            ),
         ):
             can_book, error_msg = service.can_book_bus(mock_passenger, mock_bus)
 
@@ -243,6 +321,16 @@ class TestBookingService:
                 "get_by_passenger",
                 return_value=[mock_existing_reservation],
             ),
+            patch.object(
+                service.manual_reservation_repository,
+                "get_unbooked_count_by_bus",
+                return_value=0,
+            ),
+            patch.object(
+                service.manual_reservation_repository,
+                "has_unbooked_by_username_and_bus",
+                return_value=False,
+            ),
         ):
 
             can_book, error_msg = service.can_book_bus(mock_passenger, mock_bus)
@@ -260,6 +348,9 @@ class TestBookingService:
             patch.object(service, "can_book_bus", return_value=(True, "")),
             patch.object(service.reservation_repository, "create") as mock_create,
             patch.object(
+                service.manual_reservation_repository, "mark_booked_by_username_and_bus"
+            ) as mock_mark_booked,
+            patch.object(
                 service.waiting_repository, "get_by_passenger_and_bus", return_value=[]
             ),
         ):
@@ -269,6 +360,9 @@ class TestBookingService:
             assert result is True
             mock_create.assert_called_once_with(
                 mock_passenger.id, mock_bus.id, mock_bus.direction
+            )
+            mock_mark_booked.assert_called_once_with(
+                mock_passenger.telegram_username, mock_bus.id
             )
 
     def test_create_booking_deletes_waiting_record_before_notification(self):
@@ -281,6 +375,9 @@ class TestBookingService:
         with (
             patch.object(service, "can_book_bus", return_value=(True, "")),
             patch.object(service.reservation_repository, "create"),
+            patch.object(
+                service.manual_reservation_repository, "mark_booked_by_username_and_bus"
+            ),
             patch.object(
                 service.waiting_repository,
                 "get_by_passenger_and_bus",
@@ -311,6 +408,9 @@ class TestBookingService:
         with (
             patch.object(service, "can_book_bus", return_value=(True, "")),
             patch.object(service.reservation_repository, "create"),
+            patch.object(
+                service.manual_reservation_repository, "mark_booked_by_username_and_bus"
+            ),
             patch.object(
                 service.waiting_repository,
                 "get_by_passenger_and_bus",
@@ -532,7 +632,20 @@ class TestWaitingListService:
                 "get_by_bus",
                 return_value=mock_reservations,
             ),
+            patch.object(
+                service.manual_reservation_repository,
+                "get_unbooked_count_by_bus",
+                return_value=0,
+            ),
+            patch.object(
+                service.manual_reservation_repository,
+                "has_unbooked_by_username_and_bus",
+                return_value=False,
+            ),
             patch.object(service.reservation_repository, "create") as mock_create,
+            patch.object(
+                service.manual_reservation_repository, "mark_booked_by_username_and_bus"
+            ) as mock_mark_booked,
             patch.object(
                 service.waiting_repository,
                 "get_by_passenger_and_bus",
@@ -552,6 +665,9 @@ class TestWaitingListService:
             mock_create.assert_called_once_with(
                 mock_passenger.id, mock_bus.id, mock_bus.direction
             )
+            mock_mark_booked.assert_called_once_with(
+                mock_passenger.telegram_username, mock_bus.id
+            )
             mock_update_status.assert_called_once()
             mock_update_notification.assert_called_once()
 
@@ -562,8 +678,22 @@ class TestWaitingListService:
         mock_bus = BusFactory.build(capacity=30)
         mock_reservations = [ReservationFactory.build() for _ in range(30)]
 
-        with patch.object(
-            service.reservation_repository, "get_by_bus", return_value=mock_reservations
+        with (
+            patch.object(
+                service.reservation_repository,
+                "get_by_bus",
+                return_value=mock_reservations,
+            ),
+            patch.object(
+                service.manual_reservation_repository,
+                "get_unbooked_count_by_bus",
+                return_value=0,
+            ),
+            patch.object(
+                service.manual_reservation_repository,
+                "has_unbooked_by_username_and_bus",
+                return_value=False,
+            ),
         ):
             result = service.confirm_waiting_booking(mock_passenger, mock_bus)
 

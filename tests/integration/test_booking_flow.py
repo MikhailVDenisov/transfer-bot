@@ -6,6 +6,7 @@ import pytest
 
 from database.repositories import (
     BusRepository,
+    ManualReservationRepository,
     PassengerRepository,
     ReservationRepository,
     WaitingListRepository,
@@ -251,6 +252,49 @@ class TestBookingFlow:
         assert len(waiting_records) == 1
         assert waiting_records[0].status == "Confirmed"
         assert waiting_records[0].notification_sent == "Yes"
+
+    def test_manual_reservation_blocks_others_and_allows_reserved_user(self, temp_db):
+        """Ручная резервация блокирует место для остальных и освобождается для владельца"""
+        passenger_service = PassengerService()
+        bus_service = BusService()
+        booking_service = BookingService()
+
+        reserved_user, _ = passenger_service.get_or_create_passenger(
+            "manual_reserved_user", "111111"
+        )
+        other_user, _ = passenger_service.get_or_create_passenger(
+            "other_user", "222222"
+        )
+
+        from database.connection import db_connection
+
+        db_connection.execute_query(
+            "INSERT INTO Buses (Number, Departure_Place, Destination, DepartureDate, DepartureTime, Capacity, Direction, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                "БУС-009",
+                "Москва",
+                "Переславль-Залесский",
+                "2024-01-20",
+                "08:00",
+                1,
+                "Туда",
+                True,
+            ),
+        )
+        bus = bus_service.get_all_buses()[0]
+
+        ManualReservationRepository.create(
+            "manual_reserved_user", bus.id, is_booked=False
+        )
+
+        can_book_other, _ = booking_service.can_book_bus(other_user, bus)
+        assert can_book_other is False
+
+        can_book_reserved, _ = booking_service.can_book_bus(reserved_user, bus)
+        assert can_book_reserved is True
+        assert booking_service.create_booking(reserved_user, bus) is True
+
+        assert ManualReservationRepository.get_unbooked_count_by_bus(bus.id) == 0
 
     def test_multiple_passengers_booking(self, temp_db):
         """Тест бронирования несколькими пассажирами"""
