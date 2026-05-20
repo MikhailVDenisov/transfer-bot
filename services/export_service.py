@@ -303,7 +303,12 @@ class ExportService:
             column=1,
             value=f"Автобус {bus.number or ''}, {bus.direction or ''}".strip(", "),
         )
-        ws.cell(row=2, column=1, value=f"Дата: {bus.departure_date or ''}".strip())
+        year = datetime.now().strftime("%y")
+        ws.cell(
+            row=2,
+            column=1,
+            value=f"Дата: {(bus.departure_date or '').strip()}.{year}".strip("."),
+        )
 
         ws.column_dimensions["A"].width = 22
         ws.column_dimensions["B"].width = 22
@@ -413,10 +418,11 @@ class ExportService:
             column=2,
             value=f"Автобус {bus.number or ''}, {bus.direction or ''}".strip(),
         )
+        year = datetime.now().strftime("%y")
         ws.cell(
             row=3,
             column=2,
-            value=f"Дата: {bus.departure_date or 'Дата поездки'}".strip(),
+            value=f"Дата: {(bus.departure_date or '').strip()}.{year}".strip("."),
         )
 
         headers = {
