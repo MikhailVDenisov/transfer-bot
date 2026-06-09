@@ -10,12 +10,24 @@ from database.connection import db_connection
 logger = logging.getLogger(__name__)
 
 
+def ensure_column_exists(table_name: str, column_name: str, column_definition: str):
+    """Добавляет колонку в таблицу, если она отсутствует"""
+    columns = db_connection.execute_query(
+        f"PRAGMA table_info({table_name})", fetch_all=True
+    )
+    existing_columns = {column[1] for column in columns}
+
+    if column_name not in existing_columns:
+        db_connection.execute_query(
+            f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_definition}"
+        )
+
+
 def init_database():
     """Инициализирует базу данных и создает таблицы"""
     try:
         # Создание таблицы Passengers
-        db_connection.execute_query(
-            """
+        db_connection.execute_query("""
         CREATE TABLE IF NOT EXISTS Passengers (
             ID INTEGER PRIMARY KEY AUTOINCREMENT,
             Telegram_username TEXT UNIQUE,
@@ -23,14 +35,29 @@ def init_database():
             FIO TEXT,
             Phone TEXT,
             Comment TEXT,
-            Role TEXT DEFAULT 'user'
+            Role TEXT DEFAULT 'user',
+            PassportNumber TEXT,
+            Citizenship TEXT,
+            LastName TEXT,
+            FirstName TEXT,
+            Patronymic TEXT,
+            BirthDate TEXT,
+            PersonalDataConfirmed BOOLEAN DEFAULT FALSE
         )
-        """
+        """)
+
+        ensure_column_exists("Passengers", "PassportNumber", "TEXT")
+        ensure_column_exists("Passengers", "Citizenship", "TEXT")
+        ensure_column_exists("Passengers", "LastName", "TEXT")
+        ensure_column_exists("Passengers", "FirstName", "TEXT")
+        ensure_column_exists("Passengers", "Patronymic", "TEXT")
+        ensure_column_exists("Passengers", "BirthDate", "TEXT")
+        ensure_column_exists(
+            "Passengers", "PersonalDataConfirmed", "BOOLEAN DEFAULT FALSE"
         )
 
         # Создание таблицы Buses
-        db_connection.execute_query(
-            """
+        db_connection.execute_query("""
         CREATE TABLE IF NOT EXISTS Buses (
             ID INTEGER PRIMARY KEY AUTOINCREMENT,
             Number TEXT,
@@ -42,12 +69,10 @@ def init_database():
             Direction TEXT,
             is_active BOOLEAN DEFAULT TRUE
         )
-        """
-        )
+        """)
 
         # Создание таблицы Reservations
-        db_connection.execute_query(
-            """
+        db_connection.execute_query("""
         CREATE TABLE IF NOT EXISTS Reservations (
             ID INTEGER PRIMARY KEY AUTOINCREMENT,
             PassengerID INTEGER,
@@ -57,12 +82,10 @@ def init_database():
             FOREIGN KEY (PassengerID) REFERENCES Passengers (ID),
             FOREIGN KEY (BusID) REFERENCES Buses (ID)
         )
-        """
-        )
+        """)
 
         # Создание таблицы WaitingList
-        db_connection.execute_query(
-            """
+        db_connection.execute_query("""
         CREATE TABLE IF NOT EXISTS WaitingList (
             ID INTEGER PRIMARY KEY AUTOINCREMENT,
             PassengerID INTEGER,
@@ -70,15 +93,15 @@ def init_database():
             RequestTime TEXT,
             Status TEXT DEFAULT 'Waiting',
             NotificationSent TEXT DEFAULT 'No',
+            NotificationSentAt TEXT,
             FOREIGN KEY (PassengerID) REFERENCES Passengers (ID),
             FOREIGN KEY (BusID) REFERENCES Buses (ID)
         )
-        """
-        )
+        """)
+        ensure_column_exists("WaitingList", "NotificationSentAt", "TEXT")
 
         # Создание таблицы BusOwners
-        db_connection.execute_query(
-            """
+        db_connection.execute_query("""
         CREATE TABLE IF NOT EXISTS BusOwners (
             ID INTEGER PRIMARY KEY AUTOINCREMENT,
             BusID INTEGER,
@@ -86,8 +109,35 @@ def init_database():
             FOREIGN KEY (BusID) REFERENCES Buses (ID),
             FOREIGN KEY (ChiefID) REFERENCES Passengers (ID)
         )
-        """
+        """)
+
+        # Создание таблицы ручных резерваций
+        db_connection.execute_query("""
+        CREATE TABLE IF NOT EXISTS ManualReservations (
+            ID INTEGER PRIMARY KEY AUTOINCREMENT,
+            TelegramUsername TEXT NOT NULL,
+            BusID INTEGER NOT NULL,
+            IsBooked BOOLEAN DEFAULT FALSE,
+            CreatedAt TEXT DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE (TelegramUsername, BusID),
+            FOREIGN KEY (BusID) REFERENCES Buses (ID)
         )
+        """)
+        ensure_column_exists("ManualReservations", "IsBooked", "BOOLEAN DEFAULT FALSE")
+        ensure_column_exists("ManualReservations", "CreatedAt", "TEXT")
+
+        for stmt in (
+            "CREATE INDEX IF NOT EXISTS idx_buses_direction_is_active ON Buses (Direction, is_active)",
+            "CREATE INDEX IF NOT EXISTS idx_reservations_busid ON Reservations (BusID)",
+            "CREATE INDEX IF NOT EXISTS idx_reservations_passengerid ON Reservations (PassengerID)",
+            "CREATE INDEX IF NOT EXISTS idx_waitinglist_status ON WaitingList (Status)",
+            "CREATE INDEX IF NOT EXISTS idx_waitinglist_passenger_bus_status ON WaitingList (PassengerID, BusID, Status)",
+            "CREATE INDEX IF NOT EXISTS idx_busowners_busid ON BusOwners (BusID)",
+            "CREATE INDEX IF NOT EXISTS idx_busowners_chiefid ON BusOwners (ChiefID)",
+            "CREATE INDEX IF NOT EXISTS idx_manual_reservations_busid_isbooked ON ManualReservations (BusID, IsBooked)",
+            "CREATE INDEX IF NOT EXISTS idx_manual_reservations_username_busid ON ManualReservations (TelegramUsername, BusID)",
+        ):
+            db_connection.execute_query(stmt)
 
         logger.info("База данных успешно инициализирована")
 

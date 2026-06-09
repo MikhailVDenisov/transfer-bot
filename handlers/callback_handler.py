@@ -8,11 +8,22 @@ from telegram import Update
 from telegram.ext import ContextTypes
 
 from handlers.booking_handler import BookingHandler
+from handlers.broadcast_chief_handler import (
+    BroadcastChiefHandler,
+)
 from handlers.export_handler import ExportHandler
 from handlers.info_handler import InfoHandler
 from handlers.start_handler import StartHandler
 from handlers.view_booking_handler import ViewBookingHandler
 from handlers.waiting_list_handler import WaitingListHandler
+from utils.const import (
+    BROADCAST_CHIEF_CANCEL,
+    BROADCAST_CHIEF_COMMAND,
+    BROADCAST_CHIEF_SELECT_BUS,
+    BROADCAST_CHIEF_SEND,
+    EXPORT_CHIEF_COMMAND,
+    EXPORT_CHIEF_SELECT_BUS,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +38,7 @@ class CallbackHandler:
         self.waiting_list_handler = WaitingListHandler()
         self.info_handler = InfoHandler()
         self.export_handler = ExportHandler()
+        self.broadcast_chief_handler = BroadcastChiefHandler()
 
     async def handle_callback(
         self, update: Update, context: ContextTypes.DEFAULT_TYPE
@@ -34,7 +46,7 @@ class CallbackHandler:
         """Обрабатывает callback запросы"""
         try:
             query = update.callback_query
-            await query.answer()
+            # await query.answer()
 
             callback_data = query.data
 
@@ -81,11 +93,51 @@ class CallbackHandler:
                     update, context, bus_id
                 )
 
+            elif callback_data.startswith("remove_waiting_bus_"):
+                bus_id = int(callback_data.split("_", 3)[3])
+                await self.waiting_list_handler.remove_from_waiting_list(
+                    update, context, bus_id
+                )
+
             elif callback_data == "render_faq":
                 await self.info_handler.show_faq(update, context)
 
             elif callback_data == "export_buses":
                 await self.export_handler.export_buses(update, context)
+
+            elif callback_data == "export_personal_data":
+                await self.export_handler.show_personal_data_export_menu(
+                    update, context
+                )
+
+            elif callback_data.startswith("export_personal_data_bus_"):
+                await self.export_handler.toggle_personal_data_export_bus(
+                    update, context
+                )
+
+            elif callback_data == "export_personal_data_generate":
+                await self.export_handler.export_personal_data(update, context)
+
+            elif callback_data == EXPORT_CHIEF_COMMAND:
+                await self.export_handler.show_chief_export_menu(update, context)
+
+            elif callback_data.startswith(EXPORT_CHIEF_SELECT_BUS):
+                await self.export_handler.export_chief_bus_passengers(update, context)
+
+            elif callback_data == BROADCAST_CHIEF_COMMAND:
+                await self.broadcast_chief_handler.broadcast_command(update, context)
+
+            elif callback_data.startswith(BROADCAST_CHIEF_SELECT_BUS):
+                await self.broadcast_chief_handler.prepare_broadcast(update, context)
+
+            elif callback_data == BROADCAST_CHIEF_SEND or callback_data.startswith(
+                f"{BROADCAST_CHIEF_SEND}_"
+            ):
+                await self.broadcast_chief_handler.broadcast_send(update, context)
+
+            elif callback_data == BROADCAST_CHIEF_CANCEL:
+                await self.broadcast_chief_handler.broadcast_cancel(update, context)
+                await self.start_handler.handle(update, context)
 
             elif callback_data == "back_to_menu":
                 await self.start_handler.handle(update, context)

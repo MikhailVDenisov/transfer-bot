@@ -5,24 +5,25 @@
 import logging
 
 from telegram import Update
-from telegram.ext import ContextTypes, ConversationHandler
+from telegram.ext import ContextTypes
 
 from config.settings import MESSAGES
 from handlers.base_handler import BaseHandler
 from services.booking_service import BookingService
 from services.bus_service import BusService
-from services.passenger_service import PassengerService
 from utils.keyboards import (
     create_back_keyboard,
     create_buses_keyboard,
     create_directions_keyboard,
+    create_personal_data_prompt_keyboard,
 )
-from utils.messages import format_booking_success_message, format_buses_list_message
+from utils.messages import (
+    format_available_seats_summary,
+    format_booking_success_message,
+    format_buses_list_message,
+)
 
 logger = logging.getLogger(__name__)
-
-# Состояния для ConversationHandler
-FIO, BUS_ID = range(2)
 
 
 class BookingHandler(BaseHandler):
@@ -32,13 +33,63 @@ class BookingHandler(BaseHandler):
         super().__init__()
         self.bus_service = BusService()
         self.booking_service = BookingService()
-        self.passenger_service = PassengerService()
+
+    @staticmethod
+    def _get_manual_reserved_counts_for_passenger(buses, passenger) -> dict:
+        """Возвращает ручные резервации по автобусам с учетом текущего пассажира."""
+        from database.repositories import ManualReservationRepository
+
+        manual_repo = ManualReservationRepository()
+        bus_ids = [bus.id for bus in buses if bus.id is not None]
+        manual_reserved_by_bus = manual_repo.get_unbooked_counts_by_bus(bus_ids)
+
+        username = passenger.telegram_username
+        if not username:
+            return manual_reserved_by_bus
+
+        for bus in buses:
+            if bus.id is None:
+                continue
+            if manual_repo.has_unbooked_by_username_and_bus(username, bus.id):
+                current_count = manual_reserved_by_bus.get(bus.id, 0)
+                manual_reserved_by_bus[bus.id] = max(0, current_count - 1)
+
+        return manual_reserved_by_bus
+
+    def _build_personal_data_required_message(self) -> str:
+        """Собирает сообщение о необходимости заполнить персональные данные со сводкой мест."""
+        active_buses = self.bus_service.get_active_buses()
+        available_seats_by_bus = {}
+        for bus in active_buses:
+            if bus.id is None:
+                continue
+            availability = self.bus_service.get_bus_availability_info(bus)
+            available_seats_by_bus[bus.id] = availability["free"]
+
+        seats_summary = format_available_seats_summary(
+            active_buses, available_seats_by_bus
+        )
+        return f"{seats_summary}\n\n{MESSAGES['personal_data_required']}"
 
     async def show_directions(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Показывает доступные направления"""
         try:
             query = update.callback_query
-            await query.answer()
+            if query and not context.user_data.pop("skip_callback_answer", False):
+                await query.answer()
+
+            passenger = await self.get_or_create_passenger(update)
+            if not passenger:
+                return
+
+            if not passenger.has_confirmed_personal_data():
+                await query.edit_message_text(
+                    self._build_personal_data_required_message(),
+                    reply_markup=create_personal_data_prompt_keyboard(
+                        "personal_data_from_booking"
+                    ),
+                )
+                return
 
             directions = self.bus_service.get_available_directions()
 
@@ -96,12 +147,22 @@ class BookingHandler(BaseHandler):
 
             reservation_repo = ReservationRepository()
             all_reservations = reservation_repo.get_all()
+            manual_reserved_by_bus = self._get_manual_reserved_counts_for_passenger(
+                buses, passenger
+            )
 
             # Формируем сообщение
-            message = format_buses_list_message(buses, all_reservations, direction)
+            message = format_buses_list_message(
+                buses,
+                all_reservations,
+                direction,
+                manual_reserved_by_bus=manual_reserved_by_bus,
+            )
 
             # Создаем клавиатуру
-            keyboard = create_buses_keyboard(buses, all_reservations)
+            keyboard = create_buses_keyboard(
+                buses, all_reservations, manual_reserved_by_bus=manual_reserved_by_bus
+            )
 
             await query.edit_message_text(message, reply_markup=keyboard)
 
@@ -120,6 +181,15 @@ class BookingHandler(BaseHandler):
             # Получаем пассажира
             passenger = await self.get_or_create_passenger(update)
             if not passenger:
+                return
+
+            if not passenger.has_confirmed_personal_data():
+                await query.edit_message_text(
+                    self._build_personal_data_required_message(),
+                    reply_markup=create_personal_data_prompt_keyboard(
+                        "personal_data_from_booking"
+                    ),
+                )
                 return
 
             # Получаем автобус
@@ -158,111 +228,3 @@ class BookingHandler(BaseHandler):
             await self.send_error_message(
                 update, "Ошибка при подтверждении бронирования"
             )
-
-    async def request_fio(
-        self, update: Update, context: ContextTypes.DEFAULT_TYPE, bus_id: int = None
-    ):
-        """Запрашивает ФИО у пользователя"""
-        try:
-            query = update.callback_query
-            context.user_data["bus_id"] = bus_id
-
-            if query:
-                await query.answer()
-                await query.edit_message_text(MESSAGES["fio_request"])
-            else:
-                await update.message.reply_text(MESSAGES["fio_request"])
-
-            return FIO
-
-        except Exception as e:
-            logger.error(f"Ошибка в request_fio: {str(e)}")
-            await self.send_error_message(update, "Ошибка при запросе ФИО")
-            return ConversationHandler.END
-
-    async def handle_fio_input(
-        self, update: Update, context: ContextTypes.DEFAULT_TYPE
-    ):
-        """Обрабатывает ввод ФИО пользователем"""
-        try:
-            fio = update.message.text.strip()
-
-            # Валидируем ФИО
-            from utils.validators import validate_fio
-
-            is_valid, error_msg = validate_fio(fio)
-
-            if not is_valid:
-                await update.message.reply_text(f"❌ {error_msg}")
-                return FIO
-
-            # Сохраняем ФИО
-            username = update.message.from_user.username
-            success = self.passenger_service.update_fio(username, fio)
-
-            if success:
-                # Продолжаем процесс регистрации, если был выбран автобус
-                bus_id = context.user_data.pop("bus_id", None)
-                if bus_id:
-                    await self.confirm_booking_from_fio(update, context, bus_id, fio)
-                else:
-                    await update.message.reply_text(
-                        MESSAGES["fio_saved"].format(fio=fio)
-                    )
-                    # Возвращаемся в главное меню
-                    from handlers.start_handler import StartHandler
-
-                    start_handler = StartHandler()
-                    await start_handler.handle(update, context)
-            else:
-                await update.message.reply_text(
-                    "❌ Произошла ошибка при сохранении ФИО. Попробуйте позже."
-                )
-
-            return ConversationHandler.END
-
-        except Exception as e:
-            logger.error(f"Ошибка в handle_fio_input: {str(e)}")
-            await update.message.reply_text(
-                "❌ Произошла ошибка при обработке ФИО. Попробуйте позже."
-            )
-            return ConversationHandler.END
-
-    async def confirm_booking_from_fio(
-        self, update: Update, context: ContextTypes.DEFAULT_TYPE, bus_id: int, fio: str
-    ):
-        """Продолжает процесс подтверждения брони после ввода ФИО"""
-        try:
-            # Получаем пассажира
-            passenger = await self.get_or_create_passenger(update)
-            if not passenger:
-                return
-
-            # Получаем автобус
-            bus = self.bus_service.get_bus_by_id(bus_id)
-            if not bus:
-                await update.message.reply_text("Автобус не найден.")
-                return
-
-            # Создаем бронирование
-            success = self.booking_service.create_booking(passenger, bus)
-
-            if success:
-                message = format_booking_success_message(bus)
-                await update.message.reply_text(message)
-            else:
-                await update.message.reply_text("Ошибка при создании бронирования.")
-
-        except Exception as e:
-            logger.error(f"Ошибка в confirm_booking_from_fio: {str(e)}")
-            await update.message.reply_text("Ошибка при создании бронирования.")
-
-    async def cancel_fio_input(
-        self, update: Update, context: ContextTypes.DEFAULT_TYPE
-    ):
-        """Отменяет ввод ФИО"""
-        await update.message.reply_text(
-            "Ввод ФИО отменен. Вы можете попробовать снова через главное меню."
-        )
-        context.user_data.pop("bus_id", None)
-        return ConversationHandler.END

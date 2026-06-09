@@ -3,4 +3,8 @@ client_secret_v2.json
 transfer_bot.db
 transfer_bot.egg-info
 __pycache__
-
+.idea
+/dist
+.coverage
+.env
+/backups

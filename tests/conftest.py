@@ -30,8 +30,7 @@ def in_memory_db():
     cursor = conn.cursor()
 
     # Создание таблицы Passengers
-    cursor.execute(
-        """
+    cursor.execute("""
     CREATE TABLE IF NOT EXISTS Passengers (
         ID INTEGER PRIMARY KEY AUTOINCREMENT,
         Telegram_username TEXT UNIQUE,
@@ -39,14 +38,19 @@ def in_memory_db():
         FIO TEXT,
         Phone TEXT,
         Comment TEXT,
-        Role TEXT DEFAULT 'user'
+        Role TEXT DEFAULT 'user',
+        PassportNumber TEXT,
+        Citizenship TEXT,
+        LastName TEXT,
+        FirstName TEXT,
+        Patronymic TEXT,
+        BirthDate TEXT,
+        PersonalDataConfirmed BOOLEAN DEFAULT FALSE
     )
-    """
-    )
+    """)
 
     # Создание таблицы Buses
-    cursor.execute(
-        """
+    cursor.execute("""
     CREATE TABLE IF NOT EXISTS Buses (
         ID INTEGER PRIMARY KEY AUTOINCREMENT,
         Number TEXT,
@@ -58,12 +62,10 @@ def in_memory_db():
         Direction TEXT,
         is_active BOOLEAN DEFAULT TRUE
     )
-    """
-    )
+    """)
 
     # Создание таблицы Reservations
-    cursor.execute(
-        """
+    cursor.execute("""
     CREATE TABLE IF NOT EXISTS Reservations (
         ID INTEGER PRIMARY KEY AUTOINCREMENT,
         PassengerID INTEGER,
@@ -73,12 +75,10 @@ def in_memory_db():
         FOREIGN KEY (PassengerID) REFERENCES Passengers (ID),
         FOREIGN KEY (BusID) REFERENCES Buses (ID)
     )
-    """
-    )
+    """)
 
     # Создание таблицы WaitingList
-    cursor.execute(
-        """
+    cursor.execute("""
     CREATE TABLE IF NOT EXISTS WaitingList (
         ID INTEGER PRIMARY KEY AUTOINCREMENT,
         PassengerID INTEGER,
@@ -86,15 +86,14 @@ def in_memory_db():
         RequestTime TEXT,
         Status TEXT DEFAULT 'Waiting',
         NotificationSent TEXT DEFAULT 'No',
+        NotificationSentAt TEXT,
         FOREIGN KEY (PassengerID) REFERENCES Passengers (ID),
         FOREIGN KEY (BusID) REFERENCES Buses (ID)
     )
-    """
-    )
+    """)
 
     # Создание таблицы BusOwners
-    cursor.execute(
-        """
+    cursor.execute("""
     CREATE TABLE IF NOT EXISTS BusOwners (
         ID INTEGER PRIMARY KEY AUTOINCREMENT,
         BusID INTEGER,
@@ -102,8 +101,32 @@ def in_memory_db():
         FOREIGN KEY (BusID) REFERENCES Buses (ID),
         FOREIGN KEY (ChiefID) REFERENCES Passengers (ID)
     )
-    """
+    """)
+
+    # Создание таблицы ручных резерваций
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS ManualReservations (
+        ID INTEGER PRIMARY KEY AUTOINCREMENT,
+        TelegramUsername TEXT NOT NULL,
+        BusID INTEGER NOT NULL,
+        IsBooked BOOLEAN DEFAULT FALSE,
+        CreatedAt TEXT DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE (TelegramUsername, BusID),
+        FOREIGN KEY (BusID) REFERENCES Buses (ID)
     )
+    """)
+    for stmt in (
+        "CREATE INDEX IF NOT EXISTS idx_buses_direction_is_active ON Buses (Direction, is_active)",
+        "CREATE INDEX IF NOT EXISTS idx_reservations_busid ON Reservations (BusID)",
+        "CREATE INDEX IF NOT EXISTS idx_reservations_passengerid ON Reservations (PassengerID)",
+        "CREATE INDEX IF NOT EXISTS idx_waitinglist_status ON WaitingList (Status)",
+        "CREATE INDEX IF NOT EXISTS idx_waitinglist_passenger_bus_status ON WaitingList (PassengerID, BusID, Status)",
+        "CREATE INDEX IF NOT EXISTS idx_busowners_busid ON BusOwners (BusID)",
+        "CREATE INDEX IF NOT EXISTS idx_busowners_chiefid ON BusOwners (ChiefID)",
+        "CREATE INDEX IF NOT EXISTS idx_manual_reservations_busid_isbooked ON ManualReservations (BusID, IsBooked)",
+        "CREATE INDEX IF NOT EXISTS idx_manual_reservations_username_busid ON ManualReservations (TelegramUsername, BusID)",
+    ):
+        cursor.execute(stmt)
 
     conn.commit()
 

@@ -6,6 +6,7 @@ import pytest
 
 from database.repositories import (
     BusRepository,
+    ManualReservationRepository,
     PassengerRepository,
     ReservationRepository,
     WaitingListRepository,
@@ -165,6 +166,136 @@ class TestBookingFlow:
         assert len(updated_records) == 1
         assert updated_records[0].status == "Confirmed"
 
+    def test_booking_removes_waiting_record_before_notification(self, temp_db):
+        """Если пассажир сам записался до рассылки, Waiting-запись удаляется"""
+        passenger_service = PassengerService()
+        bus_service = BusService()
+        booking_service = BookingService()
+        waiting_service = WaitingListService()
+
+        passenger, created = passenger_service.get_or_create_passenger(
+            "self_book_before_notify", "123450001"
+        )
+        assert created is True
+
+        from database.connection import db_connection
+
+        db_connection.execute_query(
+            "INSERT INTO Buses (Number, Departure_Place, Destination, DepartureDate, DepartureTime, Capacity, Direction, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                "БУС-004",
+                "Москва",
+                "Переславль-Залесский",
+                "2024-01-15",
+                "16:00",
+                3,
+                "Туда",
+                True,
+            ),
+        )
+
+        bus = bus_service.get_all_buses()[0]
+
+        success = waiting_service.add_to_waiting_list(passenger, bus)
+        assert success is True
+        waiting_records_before = WaitingListRepository.get_by_passenger_and_bus(
+            passenger.id, bus.id
+        )
+        assert len(waiting_records_before) == 1
+        assert waiting_records_before[0].notification_sent == "No"
+
+        success = booking_service.create_booking(passenger, bus)
+        assert success is True
+
+        waiting_records_after = WaitingListRepository.get_by_passenger_and_bus(
+            passenger.id, bus.id
+        )
+        assert waiting_records_after == []
+
+    def test_booking_marks_waiting_record_confirmed_after_notification(self, temp_db):
+        """Если рассылка уже была отправлена, самостоятельная бронь ставит статус Confirmed"""
+        passenger_service = PassengerService()
+        bus_service = BusService()
+        booking_service = BookingService()
+
+        passenger, created = passenger_service.get_or_create_passenger(
+            "self_book_after_notify", "123450002"
+        )
+        assert created is True
+
+        from database.connection import db_connection
+
+        db_connection.execute_query(
+            "INSERT INTO Buses (Number, Departure_Place, Destination, DepartureDate, DepartureTime, Capacity, Direction, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                "БУС-005",
+                "Москва",
+                "Переславль-Залесский",
+                "2024-01-15",
+                "18:00",
+                3,
+                "Туда",
+                True,
+            ),
+        )
+
+        bus = bus_service.get_all_buses()[0]
+        db_connection.execute_query(
+            "INSERT INTO WaitingList (PassengerID, BusID, RequestTime, Status, NotificationSent) VALUES (?, ?, ?, ?, ?)",
+            (passenger.id, bus.id, "2024-01-15 10:00:00", "Waiting", "Yes"),
+        )
+
+        success = booking_service.create_booking(passenger, bus)
+        assert success is True
+
+        waiting_records = WaitingListRepository.get_all()
+        assert len(waiting_records) == 1
+        assert waiting_records[0].status == "Confirmed"
+        assert waiting_records[0].notification_sent == "Yes"
+
+    def test_manual_reservation_blocks_others_and_allows_reserved_user(self, temp_db):
+        """Ручная резервация блокирует место для остальных и освобождается для владельца"""
+        passenger_service = PassengerService()
+        bus_service = BusService()
+        booking_service = BookingService()
+
+        reserved_user, _ = passenger_service.get_or_create_passenger(
+            "manual_reserved_user", "111111"
+        )
+        other_user, _ = passenger_service.get_or_create_passenger(
+            "other_user", "222222"
+        )
+
+        from database.connection import db_connection
+
+        db_connection.execute_query(
+            "INSERT INTO Buses (Number, Departure_Place, Destination, DepartureDate, DepartureTime, Capacity, Direction, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                "БУС-009",
+                "Москва",
+                "Переславль-Залесский",
+                "2024-01-20",
+                "08:00",
+                1,
+                "Туда",
+                True,
+            ),
+        )
+        bus = bus_service.get_all_buses()[0]
+
+        ManualReservationRepository.create(
+            "manual_reserved_user", bus.id, is_booked=False
+        )
+
+        can_book_other, _ = booking_service.can_book_bus(other_user, bus)
+        assert can_book_other is False
+
+        can_book_reserved, _ = booking_service.can_book_bus(reserved_user, bus)
+        assert can_book_reserved is True
+        assert booking_service.create_booking(reserved_user, bus) is True
+
+        assert ManualReservationRepository.get_unbooked_count_by_bus(bus.id) == 0
+
     def test_multiple_passengers_booking(self, temp_db):
         """Тест бронирования несколькими пассажирами"""
         # Создаем сервисы
@@ -300,38 +431,3 @@ class TestBookingFlow:
         assert len(directions) == 2
         assert "Туда" in directions
         assert "Обратно" in directions
-
-    def test_passenger_fio_management(self, temp_db):
-        """Тест управления ФИО пассажиров"""
-        # Создаем сервис
-        passenger_service = PassengerService()
-
-        # 1. Создаем пассажира без ФИО
-        passenger, created = passenger_service.get_or_create_passenger(
-            "test_user", "123456789"
-        )
-        assert created is True
-        assert passenger.fio is None
-
-        # 2. Проверяем, что ФИО не заполнено
-        has_fio, passenger_check = passenger_service.check_user_fio("test_user")
-        assert has_fio is False
-        assert passenger_check.fio is None
-
-        # 3. Обновляем ФИО
-        success = passenger_service.update_fio("test_user", "Иванов Иван Иванович")
-        assert success is True
-
-        # 4. Проверяем, что ФИО обновлено
-        has_fio_after, passenger_after = passenger_service.check_user_fio("test_user")
-        assert has_fio_after is True
-        assert passenger_after.fio == "Иванов Иван Иванович"
-
-        # 5. Пытаемся обновить на невалидное ФИО
-        success_invalid = passenger_service.update_fio("test_user", "Ив")
-        assert success_invalid is False
-
-        # 6. Проверяем, что ФИО не изменилось
-        has_fio_final, passenger_final = passenger_service.check_user_fio("test_user")
-        assert has_fio_final is True
-        assert passenger_final.fio == "Иванов Иван Иванович"

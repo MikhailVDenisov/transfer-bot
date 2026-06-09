@@ -29,8 +29,11 @@ class StartHandler(BaseHandler):
             # Проверяем, является ли пользователь администратором
             is_admin = passenger.is_admin()
 
+            # Проверяем, является ли пользователь шефом
+            is_chief = passenger.is_chief()
+
             # Создаем клавиатуру
-            keyboard = create_main_menu_keyboard(is_admin)
+            keyboard = create_main_menu_keyboard(is_admin, is_chief)
 
             # Отправляем приветственное сообщение
             if update.message:

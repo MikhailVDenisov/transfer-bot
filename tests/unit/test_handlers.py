@@ -2,21 +2,30 @@
 Тесты для обработчиков
 """
 
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import ANY, AsyncMock, Mock, patch
 
 import pytest
 from telegram import CallbackQuery, Chat, Message, Update, User
 from telegram.ext import ContextTypes
 
 from handlers.booking_handler import BookingHandler
+from handlers.broadcast_chief_handler import BroadcastChiefHandler
 from handlers.callback_handler import CallbackHandler
 from handlers.export_handler import ExportHandler
 from handlers.info_handler import InfoHandler
+from handlers.personal_data_handler import PERSONAL_LAST_NAME, PersonalDataHandler
 from handlers.start_handler import StartHandler
 from handlers.view_booking_handler import ViewBookingHandler
 from handlers.waiting_list_handler import WaitingListHandler
 from models.entities import Bus, Passenger, Reservation
-from tests.factories import BusFactory, PassengerFactory, ReservationFactory
+from services.broadcast_service import BroadcastStats
+from tests.factories import (
+    BusFactory,
+    PassengerFactory,
+    ReservationFactory,
+    WaitingListRecordFactory,
+)
+from utils.const import BROADCAST_CHIEF_SELECT_BUS, BROADCAST_CHIEF_SEND
 
 
 class TestStartHandler:
@@ -120,12 +129,18 @@ class TestBookingHandler:
         self, handler, mock_update_with_callback, mock_context
     ):
         """Тест успешного показа направлений"""
+        mock_passenger = PassengerFactory.build()
         mock_directions = ["Туда", "Обратно"]
 
-        with patch.object(
-            handler.bus_service,
-            "get_available_directions",
-            return_value=mock_directions,
+        with (
+            patch.object(
+                handler, "get_or_create_passenger", return_value=mock_passenger
+            ),
+            patch.object(
+                handler.bus_service,
+                "get_available_directions",
+                return_value=mock_directions,
+            ),
         ):
             await handler.show_directions(mock_update_with_callback, mock_context)
 
@@ -137,8 +152,15 @@ class TestBookingHandler:
         self, handler, mock_update_with_callback, mock_context
     ):
         """Тест показа направлений когда их нет"""
-        with patch.object(
-            handler.bus_service, "get_available_directions", return_value=[]
+        mock_passenger = PassengerFactory.build()
+
+        with (
+            patch.object(
+                handler, "get_or_create_passenger", return_value=mock_passenger
+            ),
+            patch.object(
+                handler.bus_service, "get_available_directions", return_value=[]
+            ),
         ):
             await handler.show_directions(mock_update_with_callback, mock_context)
 
@@ -171,6 +193,56 @@ class TestBookingHandler:
             )
 
             mock_update_with_callback.callback_query.edit_message_text.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_show_directions_requires_personal_data(
+        self, handler, mock_update_with_callback, mock_context
+    ):
+        """Тест запрета бронирования без персональных данных"""
+        mock_passenger = PassengerFactory.build(passport_number="")
+
+        with (
+            patch.object(
+                handler, "get_or_create_passenger", return_value=mock_passenger
+            ),
+            patch.object(
+                handler,
+                "_build_personal_data_required_message",
+                return_value="Информация о доступных местах:\n...",
+            ),
+        ):
+            await handler.show_directions(mock_update_with_callback, mock_context)
+
+            mock_update_with_callback.callback_query.edit_message_text.assert_called_once()
+            message_text = mock_update_with_callback.callback_query.edit_message_text.call_args.args[
+                0
+            ]
+            assert "Информация о доступных местах:" in message_text
+
+    @pytest.mark.asyncio
+    async def test_confirm_booking_requires_personal_data(
+        self, handler, mock_update_with_callback, mock_context
+    ):
+        """Тест запрета подтверждения бронирования без персональных данных"""
+        mock_passenger = PassengerFactory.build(passport_number="")
+
+        with (
+            patch.object(
+                handler, "get_or_create_passenger", return_value=mock_passenger
+            ),
+            patch.object(
+                handler,
+                "_build_personal_data_required_message",
+                return_value="Информация о доступных местах:\n...",
+            ),
+        ):
+            await handler.confirm_booking(mock_update_with_callback, mock_context, 1)
+
+            mock_update_with_callback.callback_query.edit_message_text.assert_called_once()
+            message_text = mock_update_with_callback.callback_query.edit_message_text.call_args.args[
+                0
+            ]
+            assert "Информация о доступных местах:" in message_text
 
     @pytest.mark.asyncio
     async def test_confirm_booking_success(
@@ -257,12 +329,43 @@ class TestViewBookingHandler:
                 "get_user_bookings",
                 return_value=mock_reservations,
             ),
+            patch.object(
+                handler.booking_service, "get_user_waiting_records", return_value=[]
+            ),
             patch.object(handler.bus_service, "get_all_buses", return_value=mock_buses),
         ):
 
             await handler.view_bookings(mock_update_with_callback, mock_context)
 
             mock_update_with_callback.callback_query.edit_message_text.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_view_bookings_shows_waiting_list_status(
+        self, handler, mock_update_with_callback, mock_context
+    ):
+        """Тест отображения статуса листа ожидания при отсутствии брони"""
+        mock_passenger = PassengerFactory.build()
+        mock_buses = [BusFactory.build(id=1, number="БУС-001")]
+        waiting_records = [WaitingListRecordFactory.build(bus_id=1)]
+
+        with (
+            patch.object(
+                handler, "get_or_create_passenger", return_value=mock_passenger
+            ),
+            patch.object(handler.booking_service, "get_user_bookings", return_value=[]),
+            patch.object(
+                handler.booking_service,
+                "get_user_waiting_records",
+                return_value=waiting_records,
+            ),
+            patch.object(handler.bus_service, "get_all_buses", return_value=mock_buses),
+        ):
+            await handler.view_bookings(mock_update_with_callback, mock_context)
+
+            edit_call = mock_update_with_callback.callback_query.edit_message_text
+            edit_call.assert_called_once()
+            message_text = edit_call.call_args.args[0]
+            assert "Вы в листе ожидания" in message_text
 
     @pytest.mark.asyncio
     async def test_cancel_booking_menu_no_bookings(
@@ -367,6 +470,29 @@ class TestWaitingListHandler:
         ):
 
             await handler.add_to_waiting_list(
+                mock_update_with_callback, mock_context, 1
+            )
+
+            mock_update_with_callback.callback_query.edit_message_text.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_remove_from_waiting_list_success(
+        self, handler, mock_update_with_callback, mock_context
+    ):
+        """Тест успешного удаления из листа ожидания"""
+        mock_passenger = PassengerFactory.build()
+        mock_bus = BusFactory.build()
+
+        with (
+            patch.object(
+                handler, "get_or_create_passenger", return_value=mock_passenger
+            ),
+            patch.object(handler.bus_service, "get_bus_by_id", return_value=mock_bus),
+            patch.object(
+                handler.waiting_service, "remove_from_waiting_list", return_value=True
+            ),
+        ):
+            await handler.remove_from_waiting_list(
                 mock_update_with_callback, mock_context, 1
             )
 
@@ -496,6 +622,266 @@ class TestExportHandler:
                 "⚠️ Доступ запрещен", show_alert=True
             )
 
+    @pytest.mark.asyncio
+    async def test_show_personal_data_export_menu_admin_success(
+        self, handler, mock_update_with_callback, mock_context
+    ):
+        """Тест открытия меню выгрузки персональных данных администратором"""
+        mock_passenger = PassengerFactory.build(role="admin")
+        mock_buses = [BusFactory.build(id=1, number="БУС-001")]
+
+        with (
+            patch.object(
+                handler, "get_or_create_passenger", return_value=mock_passenger
+            ),
+            patch.object(handler.bus_service, "get_all_buses", return_value=mock_buses),
+        ):
+            await handler.show_personal_data_export_menu(
+                mock_update_with_callback, mock_context
+            )
+
+            assert mock_context.user_data["personal_data_export_bus_ids"] == []
+            mock_update_with_callback.callback_query.edit_message_text.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_export_personal_data_admin_success(
+        self, handler, mock_update_with_callback, mock_context
+    ):
+        """Тест успешной выгрузки персональных данных администратором"""
+        mock_passenger = PassengerFactory.build(role="admin")
+        mock_context.bot.send_document = AsyncMock()
+        mock_context.bot.send_message = AsyncMock()
+        mock_context.user_data["personal_data_export_bus_ids"] = [1]
+
+        with (
+            patch.object(
+                handler, "get_or_create_passenger", return_value=mock_passenger
+            ),
+            patch.object(
+                handler.export_service,
+                "export_personal_data_to_excel",
+                return_value="temp_file.xlsx",
+            ),
+            patch.object(handler.export_service, "cleanup_temp_file"),
+            patch("builtins.open", mock_open_file_content()),
+        ):
+            await handler.export_personal_data(mock_update_with_callback, mock_context)
+
+            mock_context.bot.send_document.assert_called_once()
+            mock_context.bot.send_message.assert_called_once()
+            assert "personal_data_export_bus_ids" not in mock_context.user_data
+
+    @pytest.mark.asyncio
+    async def test_export_personal_data_admin_cleans_temp_file_on_send_error(
+        self, handler, mock_update_with_callback, mock_context
+    ):
+        """Временный файл удаляется даже если отправка документа завершилась ошибкой"""
+        mock_passenger = PassengerFactory.build(role="admin")
+        mock_context.bot.send_document = AsyncMock(side_effect=Exception("send failed"))
+        mock_context.user_data["personal_data_export_bus_ids"] = [1]
+
+        with (
+            patch.object(
+                handler, "get_or_create_passenger", return_value=mock_passenger
+            ),
+            patch.object(
+                handler.export_service,
+                "export_personal_data_to_excel",
+                return_value="temp_file.xlsx",
+            ),
+            patch.object(handler.export_service, "cleanup_temp_file") as cleanup_mock,
+            patch("builtins.open", mock_open_file_content()),
+        ):
+            await handler.export_personal_data(mock_update_with_callback, mock_context)
+
+            cleanup_mock.assert_called_once_with("temp_file.xlsx")
+
+    @pytest.mark.asyncio
+    async def test_show_chief_export_menu_success(
+        self, handler, mock_update_with_callback, mock_context
+    ):
+        """Тест открытия меню выгрузки для шефа"""
+        mock_passenger = PassengerFactory.build(role="chief", id=5)
+        mock_buses = [BusFactory.build(id=1, number="БУС-001")]
+
+        with (
+            patch.object(
+                handler, "get_or_create_passenger", return_value=mock_passenger
+            ),
+            patch.object(
+                handler.bus_service, "get_buses_by_chief", return_value=mock_buses
+            ),
+        ):
+            await handler.show_chief_export_menu(
+                mock_update_with_callback, mock_context
+            )
+
+            mock_update_with_callback.callback_query.edit_message_text.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_show_chief_export_menu_includes_inactive_bus(
+        self, handler, mock_update_with_callback, mock_context
+    ):
+        """Шеф видит в меню выгрузки и неактивный назначенный автобус"""
+        mock_passenger = PassengerFactory.build(role="chief", id=5)
+        mock_buses = [BusFactory.build(id=1, number="БУС-001", is_active=False)]
+
+        with (
+            patch.object(
+                handler, "get_or_create_passenger", return_value=mock_passenger
+            ),
+            patch.object(
+                handler.bus_service, "get_buses_by_chief", return_value=mock_buses
+            ),
+        ):
+            await handler.show_chief_export_menu(
+                mock_update_with_callback, mock_context
+            )
+
+            mock_update_with_callback.callback_query.edit_message_text.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_export_chief_bus_passengers_success(
+        self, handler, mock_update_with_callback, mock_context
+    ):
+        """Тест успешной выгрузки списка пассажиров шефом"""
+        mock_passenger = PassengerFactory.build(role="chief", id=5)
+        mock_context.bot.send_document = AsyncMock()
+        mock_context.bot.send_message = AsyncMock()
+        mock_update_with_callback.callback_query.data = "export_chief_select_bus_1"
+        chief_buses = [BusFactory.build(id=1, number="БУС-001")]
+        export_mock = AsyncMock(return_value="temp_file.xlsx")
+
+        with (
+            patch.object(
+                handler, "get_or_create_passenger", return_value=mock_passenger
+            ),
+            patch.object(
+                handler.bus_service, "get_buses_by_chief", return_value=chief_buses
+            ),
+            patch.object(
+                handler.export_service,
+                "export_personal_data_to_excel",
+                export_mock,
+            ),
+            patch.object(handler.export_service, "cleanup_temp_file"),
+            patch("builtins.open", mock_open_file_content()),
+        ):
+            await handler.export_chief_bus_passengers(
+                mock_update_with_callback, mock_context
+            )
+
+            mock_context.bot.send_document.assert_called_once()
+            mock_context.bot.send_message.assert_called_once()
+            export_mock.assert_awaited_once_with([1], chief_view=True)
+
+    @pytest.mark.asyncio
+    async def test_export_chief_bus_passengers_cleans_temp_file_on_send_error(
+        self, handler, mock_update_with_callback, mock_context
+    ):
+        """Шефская выгрузка удаляет временный файл даже при ошибке отправки"""
+        mock_passenger = PassengerFactory.build(role="chief", id=5)
+        mock_context.bot.send_document = AsyncMock(side_effect=Exception("send failed"))
+        mock_update_with_callback.callback_query.data = "export_chief_select_bus_1"
+        chief_buses = [BusFactory.build(id=1, number="БУС-001")]
+        export_mock = AsyncMock(return_value="temp_file.xlsx")
+
+        with (
+            patch.object(
+                handler, "get_or_create_passenger", return_value=mock_passenger
+            ),
+            patch.object(
+                handler.bus_service, "get_buses_by_chief", return_value=chief_buses
+            ),
+            patch.object(
+                handler.export_service,
+                "export_personal_data_to_excel",
+                export_mock,
+            ),
+            patch.object(handler.export_service, "cleanup_temp_file") as cleanup_mock,
+            patch("builtins.open", mock_open_file_content()),
+        ):
+            await handler.export_chief_bus_passengers(
+                mock_update_with_callback, mock_context
+            )
+
+            cleanup_mock.assert_called_once_with("temp_file.xlsx")
+
+
+class TestPersonalDataHandler:
+    """Тесты для PersonalDataHandler"""
+
+    @pytest.fixture
+    def handler(self):
+        return PersonalDataHandler()
+
+    @pytest.fixture
+    def mock_callback_query(self):
+        query = Mock(spec=CallbackQuery)
+        query.answer = AsyncMock()
+        query.edit_message_text = AsyncMock()
+        query.from_user = Mock(spec=User)
+        query.from_user.username = "test_user"
+        return query
+
+    @pytest.fixture
+    def mock_update_with_callback(self, mock_callback_query):
+        update = Mock(spec=Update)
+        update.callback_query = mock_callback_query
+        return update
+
+    @pytest.fixture
+    def mock_context(self):
+        return Mock(spec=ContextTypes.DEFAULT_TYPE)
+
+    @pytest.mark.asyncio
+    async def test_show_personal_data_hides_edit_for_booked_passenger(
+        self, handler, mock_update_with_callback, mock_context
+    ):
+        passenger = PassengerFactory.build(personal_data_confirmed=True)
+
+        with (
+            patch.object(handler, "get_or_create_passenger", return_value=passenger),
+            patch.object(
+                handler.booking_service, "has_active_bookings", return_value=True
+            ),
+        ):
+            await handler.show_personal_data(mock_update_with_callback, mock_context)
+
+        reply_markup = (
+            mock_update_with_callback.callback_query.edit_message_text.call_args.kwargs[
+                "reply_markup"
+            ]
+        )
+        assert len(reply_markup.inline_keyboard) == 1
+        assert reply_markup.inline_keyboard[0][0].text == "Назад"
+
+    @pytest.mark.asyncio
+    async def test_edit_personal_data_before_confirm_returns_to_last_name_step(
+        self, handler, mock_update_with_callback, mock_context
+    ):
+        mock_update_with_callback.message = None
+        mock_context.user_data = {
+            "personal_data": {
+                "last_name": "Иванов",
+                "first_name": "Иван",
+            }
+        }
+        mock_update_with_callback.callback_query.message = Mock(spec=Message)
+        mock_update_with_callback.callback_query.message.reply_text = AsyncMock()
+
+        state = await handler.edit_personal_data_before_confirm(
+            mock_update_with_callback, mock_context
+        )
+
+        assert state == PERSONAL_LAST_NAME
+        mock_update_with_callback.callback_query.answer.assert_called_once()
+        mock_update_with_callback.callback_query.edit_message_text.assert_called_once()
+        prompt_text = (
+            mock_update_with_callback.callback_query.edit_message_text.call_args.args[0]
+        )
+        assert "Текущее значение: Иванов" in prompt_text
+
 
 class TestCallbackHandler:
     """Тесты для CallbackHandler"""
@@ -535,6 +921,42 @@ class TestCallbackHandler:
             )
 
     @pytest.mark.asyncio
+    async def test_handle_callback_export_personal_data(
+        self, handler, mock_update_with_callback, mock_context
+    ):
+        """Тест обработки callback открытия меню выгрузки персональных данных"""
+        mock_update_with_callback.callback_query.data = "export_personal_data"
+
+        with patch.object(
+            handler.export_handler,
+            "show_personal_data_export_menu",
+            new_callable=AsyncMock,
+        ) as mock_export_menu:
+            await handler.handle_callback(mock_update_with_callback, mock_context)
+
+            mock_export_menu.assert_called_once_with(
+                mock_update_with_callback, mock_context
+            )
+
+    @pytest.mark.asyncio
+    async def test_handle_callback_export_chief_command(
+        self, handler, mock_update_with_callback, mock_context
+    ):
+        """Тест обработки callback выгрузки списка пассажиров шефом"""
+        mock_update_with_callback.callback_query.data = "export_chief_command"
+
+        with patch.object(
+            handler.export_handler,
+            "show_chief_export_menu",
+            new_callable=AsyncMock,
+        ) as mock_export_menu:
+            await handler.handle_callback(mock_update_with_callback, mock_context)
+
+            mock_export_menu.assert_called_once_with(
+                mock_update_with_callback, mock_context
+            )
+
+    @pytest.mark.asyncio
     async def test_handle_callback_view_booking(
         self, handler, mock_update_with_callback, mock_context
     ):
@@ -551,6 +973,24 @@ class TestCallbackHandler:
             )
 
     @pytest.mark.asyncio
+    async def test_handle_callback_remove_waiting_bus(
+        self, handler, mock_update_with_callback, mock_context
+    ):
+        """Тест обработки callback удаления из листа ожидания"""
+        mock_update_with_callback.callback_query.data = "remove_waiting_bus_3"
+
+        with patch.object(
+            handler.waiting_list_handler,
+            "remove_from_waiting_list",
+            new_callable=AsyncMock,
+        ) as mock_remove:
+            await handler.handle_callback(mock_update_with_callback, mock_context)
+
+            mock_remove.assert_called_once_with(
+                mock_update_with_callback, mock_context, 3
+            )
+
+    @pytest.mark.asyncio
     async def test_handle_callback_unknown(
         self, handler, mock_update_with_callback, mock_context
     ):
@@ -563,6 +1003,518 @@ class TestCallbackHandler:
         mock_update_with_callback.callback_query.edit_message_text.assert_called_once_with(
             "Неизвестная команда."
         )
+
+
+class TestBroadcastChiefHandler:
+    """Тесты для BroadcastChiefHandler"""
+
+    @pytest.fixture
+    def mock_callback_query(self):
+        query = Mock(spec=CallbackQuery)
+        query.answer = AsyncMock()
+        query.edit_message_text = AsyncMock()
+        query.edit_message_reply_markup = AsyncMock()
+        query.from_user = Mock(spec=User)
+        query.from_user.username = "chief_user"
+        query.data = f"{BROADCAST_CHIEF_SELECT_BUS}42"
+        query.message = Mock(spec=Message)
+        query.message.reply_text = AsyncMock()
+        return query
+
+    @pytest.fixture
+    def mock_update_with_callback(self, mock_callback_query):
+        update = Mock(spec=Update)
+        update.callback_query = mock_callback_query
+        update.effective_user = mock_callback_query.from_user
+        update.effective_chat = Mock(spec=Chat)
+        update.effective_chat.id = 123456789
+        return update
+
+    @pytest.fixture
+    def mock_update_with_message(self):
+        update = Mock(spec=Update)
+        update.callback_query = None
+        update.message = Mock(spec=Message)
+        update.message.message_id = 77
+        update.message.reply_text = AsyncMock()
+        update.effective_chat = Mock(spec=Chat)
+        update.effective_chat.id = 555
+        update.effective_user = Mock(spec=User)
+        update.effective_user.username = "chief_user"
+        return update
+
+    @pytest.fixture
+    def mock_context(self):
+        ctx = Mock(spec=ContextTypes.DEFAULT_TYPE)
+        ctx.user_data = {}
+        ctx.bot = Mock()
+        ctx.bot.copy_message = AsyncMock()
+        return ctx
+
+    @pytest.fixture
+    def handler(self):
+        return BroadcastChiefHandler()
+
+    @pytest.mark.asyncio
+    async def test_broadcast_command_forbidden_not_chief(
+        self, handler, mock_update_with_callback, mock_context
+    ):
+        mock_passenger = PassengerFactory.build(role="user")
+
+        with (
+            patch.object(
+                handler, "get_or_create_passenger", return_value=mock_passenger
+            ),
+            patch.object(handler, "_broadcast_error", new_callable=AsyncMock) as err,
+        ):
+            await handler.broadcast_command(mock_update_with_callback, mock_context)
+
+        err.assert_called_once_with(
+            mock_update_with_callback, mock_context, "Доступ запрещен"
+        )
+        mock_update_with_callback.callback_query.answer.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_broadcast_command_no_buses(
+        self, handler, mock_update_with_callback, mock_context
+    ):
+        mock_passenger = PassengerFactory.build(role="chief")
+
+        with (
+            patch.object(
+                handler, "get_or_create_passenger", return_value=mock_passenger
+            ),
+            patch.object(handler.bus_service, "get_buses_by_chief", return_value=[]),
+            patch.object(handler, "_broadcast_error", new_callable=AsyncMock) as err,
+        ):
+            await handler.broadcast_command(mock_update_with_callback, mock_context)
+
+        mock_update_with_callback.callback_query.answer.assert_called_once()
+        err.assert_called_once_with(
+            mock_update_with_callback,
+            mock_context,
+            "На вас не назначено ни одного автобуса",
+        )
+
+    @pytest.mark.asyncio
+    async def test_broadcast_command_success(
+        self, handler, mock_update_with_callback, mock_context
+    ):
+        mock_passenger = PassengerFactory.build(role="chief", id=10)
+        buses = [BusFactory.build(id=1, number="1", destination="Туда")]
+
+        with (
+            patch.object(
+                handler, "get_or_create_passenger", return_value=mock_passenger
+            ),
+            patch.object(handler.bus_service, "get_buses_by_chief", return_value=buses),
+        ):
+            await handler.broadcast_command(mock_update_with_callback, mock_context)
+
+        mock_update_with_callback.callback_query.answer.assert_called_once()
+        mock_update_with_callback.callback_query.edit_message_text.assert_called_once()
+        call = mock_update_with_callback.callback_query.edit_message_text.call_args
+        text = call.kwargs.get("text", call.args[0] if call.args else None)
+        reply_markup = call.kwargs.get("reply_markup")
+        assert text == "Выберите автобус:"
+        assert reply_markup is not None
+
+    @pytest.mark.asyncio
+    async def test_prepare_broadcast_success(
+        self, handler, mock_update_with_callback, mock_context
+    ):
+        mock_passenger = PassengerFactory.build(role="chief", id=3)
+        chief_buses = [BusFactory.build(id=42, number="1", destination="Туда")]
+        passengers_for_broadcast = [PassengerFactory.build(id=10)]
+
+        with (
+            patch.object(
+                handler, "get_or_create_passenger", return_value=mock_passenger
+            ),
+            patch.object(
+                handler.bus_service,
+                "get_buses_by_chief",
+                return_value=chief_buses,
+            ),
+            patch.object(
+                handler.broadcast_service,
+                "get_passengers_for_broadcast",
+                return_value=passengers_for_broadcast,
+            ),
+        ):
+            await handler.prepare_broadcast(mock_update_with_callback, mock_context)
+
+        assert mock_context.user_data["bus_id"] == 42
+        assert mock_context.user_data["broadcast_mode"] is True
+        assert mock_context.user_data["broadcast_message"] is None
+        mock_update_with_callback.callback_query.edit_message_text.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_prepare_broadcast_forbidden(
+        self, handler, mock_update_with_callback, mock_context
+    ):
+        mock_passenger = PassengerFactory.build(role="user")
+
+        with (
+            patch.object(
+                handler, "get_or_create_passenger", return_value=mock_passenger
+            ),
+            patch.object(handler, "_broadcast_error", new_callable=AsyncMock) as err,
+        ):
+            await handler.prepare_broadcast(mock_update_with_callback, mock_context)
+
+        err.assert_called_once_with(
+            mock_update_with_callback, mock_context, "Доступ запрещен"
+        )
+
+    @pytest.mark.asyncio
+    async def test_prepare_broadcast_invalid_callback_data(
+        self, handler, mock_update_with_callback, mock_context
+    ):
+        mock_passenger = PassengerFactory.build(role="chief")
+        mock_update_with_callback.callback_query.data = "not_a_bus_callback"
+
+        with (
+            patch.object(
+                handler, "get_or_create_passenger", return_value=mock_passenger
+            ),
+            patch.object(handler, "_broadcast_error", new_callable=AsyncMock) as err,
+        ):
+            await handler.prepare_broadcast(mock_update_with_callback, mock_context)
+
+        err.assert_called_once_with(
+            mock_update_with_callback,
+            mock_context,
+            "Некорректный выбор автобуса",
+        )
+        mock_update_with_callback.callback_query.answer.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_prepare_broadcast_bus_not_assigned_to_chief(
+        self, handler, mock_update_with_callback, mock_context
+    ):
+        mock_passenger = PassengerFactory.build(role="chief", id=1)
+        mock_update_with_callback.callback_query.data = (
+            f"{BROADCAST_CHIEF_SELECT_BUS}42"
+        )
+
+        with (
+            patch.object(
+                handler, "get_or_create_passenger", return_value=mock_passenger
+            ),
+            patch.object(
+                handler.bus_service,
+                "get_buses_by_chief",
+                return_value=[
+                    BusFactory.build(id=7, number="7", destination="Обратно")
+                ],
+            ),
+            patch.object(handler, "_broadcast_error", new_callable=AsyncMock) as err,
+        ):
+            await handler.prepare_broadcast(mock_update_with_callback, mock_context)
+
+        err.assert_called_once_with(
+            mock_update_with_callback,
+            mock_context,
+            "Этот автобус вам не назначен",
+        )
+        mock_update_with_callback.callback_query.answer.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_prepare_broadcast_no_passengers_on_bus(
+        self, handler, mock_update_with_callback, mock_context
+    ):
+        mock_passenger = PassengerFactory.build(role="chief", id=1)
+        chief_buses = [BusFactory.build(id=42, number="42", destination="Туда")]
+
+        with (
+            patch.object(
+                handler, "get_or_create_passenger", return_value=mock_passenger
+            ),
+            patch.object(
+                handler.bus_service,
+                "get_buses_by_chief",
+                return_value=chief_buses,
+            ),
+            patch.object(
+                handler.broadcast_service,
+                "get_passengers_for_broadcast",
+                return_value=[],
+            ),
+            patch.object(handler, "_broadcast_error", new_callable=AsyncMock) as err,
+        ):
+            await handler.prepare_broadcast(mock_update_with_callback, mock_context)
+
+        err.assert_called_once_with(
+            mock_update_with_callback,
+            mock_context,
+            "Не найдено пассажиров для рассылки",
+        )
+        mock_update_with_callback.callback_query.answer.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_handle_chief_message_no_broadcast_mode(
+        self, handler, mock_update_with_message, mock_context
+    ):
+        with (
+            patch.object(
+                handler, "get_or_create_passenger", new_callable=AsyncMock
+            ) as mock_get,
+            patch.object(handler, "_broadcast_error", new_callable=AsyncMock) as err,
+        ):
+            await handler.handle_chief_message(mock_update_with_message, mock_context)
+
+        mock_get.assert_not_called()
+        err.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_handle_chief_message_success(
+        self, handler, mock_update_with_message, mock_context
+    ):
+        mock_passenger = PassengerFactory.build(role="chief")
+        mock_context.user_data["broadcast_mode"] = True
+
+        with patch.object(
+            handler, "get_or_create_passenger", return_value=mock_passenger
+        ):
+            await handler.handle_chief_message(mock_update_with_message, mock_context)
+
+        assert mock_context.user_data["broadcast_message"] == {
+            "chat_id": 555,
+            "message_id": 77,
+        }
+        mock_update_with_message.message.reply_text.assert_called_once_with(
+            "Предпросмотр сообщения:"
+        )
+        mock_context.bot.copy_message.assert_called_once()
+        copy_kw = mock_context.bot.copy_message.call_args.kwargs
+        assert copy_kw["chat_id"] == 555
+        assert copy_kw["from_chat_id"] == 555
+        assert copy_kw["message_id"] == 77
+        assert copy_kw["reply_markup"] is not None
+        send_btn = copy_kw["reply_markup"].inline_keyboard[0][0]
+        assert send_btn.callback_data == f"{BROADCAST_CHIEF_SEND}_77"
+
+    @pytest.mark.asyncio
+    async def test_broadcast_send_no_broadcast_mode(
+        self, handler, mock_update_with_callback, mock_context
+    ):
+        mock_passenger = PassengerFactory.build(role="chief")
+        mock_context.user_data["broadcast_message"] = {
+            "chat_id": 1,
+            "message_id": 2,
+        }
+
+        with (
+            patch.object(
+                handler, "get_or_create_passenger", return_value=mock_passenger
+            ),
+            patch.object(handler, "_broadcast_error", new_callable=AsyncMock) as err,
+        ):
+            await handler.broadcast_send(mock_update_with_callback, mock_context)
+
+        err.assert_called_once_with(
+            mock_update_with_callback, mock_context, "Ошибка рассылки"
+        )
+
+    @pytest.mark.asyncio
+    async def test_broadcast_send_no_message_payload(
+        self, handler, mock_update_with_callback, mock_context
+    ):
+        mock_passenger = PassengerFactory.build(role="chief")
+        mock_context.user_data["broadcast_mode"] = True
+        mock_context.user_data["bus_id"] = 1
+
+        with (
+            patch.object(
+                handler, "get_or_create_passenger", return_value=mock_passenger
+            ),
+            patch.object(handler, "_broadcast_error", new_callable=AsyncMock) as err,
+        ):
+            await handler.broadcast_send(mock_update_with_callback, mock_context)
+
+        err.assert_called_once_with(
+            mock_update_with_callback,
+            mock_context,
+            "Не найдено сообщение для рассылки",
+        )
+
+    @pytest.mark.asyncio
+    async def test_broadcast_send_no_passengers(
+        self, handler, mock_update_with_callback, mock_context
+    ):
+        mock_passenger = PassengerFactory.build(role="chief")
+        mock_context.user_data["broadcast_mode"] = True
+        mock_context.user_data["bus_id"] = 1
+        mock_context.user_data["broadcast_message"] = {
+            "chat_id": 1,
+            "message_id": 2,
+        }
+
+        with (
+            patch.object(
+                handler, "get_or_create_passenger", return_value=mock_passenger
+            ),
+            patch.object(
+                handler.broadcast_service,
+                "get_passengers_for_broadcast",
+                return_value=[],
+            ),
+            patch.object(handler, "_broadcast_error", new_callable=AsyncMock) as err,
+        ):
+            await handler.broadcast_send(mock_update_with_callback, mock_context)
+
+        err.assert_called_once_with(
+            mock_update_with_callback,
+            mock_context,
+            "Не найдено пассажиров для рассылки",
+        )
+
+    @pytest.mark.asyncio
+    async def test_broadcast_send_success(
+        self, handler, mock_update_with_callback, mock_context
+    ):
+        mock_passenger = PassengerFactory.build(role="chief", id=5)
+        recipients = [PassengerFactory.build()]
+        mock_context.user_data["broadcast_mode"] = True
+        mock_context.user_data["bus_id"] = 1
+        mock_context.user_data["broadcast_message"] = {
+            "chat_id": 100,
+            "message_id": 200,
+        }
+        mock_update_with_callback.callback_query.data = f"{BROADCAST_CHIEF_SEND}_200"
+        mock_update_with_callback.effective_chat.id = 100
+        stats = BroadcastStats(sent=3, failed=1, forbidden=0)
+
+        with (
+            patch.object(
+                handler, "get_or_create_passenger", return_value=mock_passenger
+            ),
+            patch.object(
+                handler.broadcast_service,
+                "get_passengers_for_broadcast",
+                return_value=recipients,
+            ),
+            patch.object(
+                handler.broadcast_service,
+                "send_broadcast",
+                new_callable=AsyncMock,
+                return_value=stats,
+            ) as send_bc,
+        ):
+            await handler.broadcast_send(mock_update_with_callback, mock_context)
+
+        mock_update_with_callback.callback_query.answer.assert_called_once()
+        mock_update_with_callback.callback_query.edit_message_reply_markup.assert_called_once_with(
+            reply_markup=None
+        )
+        send_bc.assert_called_once_with(
+            mock_context.bot,
+            recipients,
+            100,
+            200,
+            ANY,
+            ANY,
+        )
+        assert (
+            "Для ответа на сообщение напишите в личные сообщения шефу автобуса"
+            in send_bc.call_args.args[5]
+        )
+        assert "broadcast_mode" not in mock_context.user_data
+        assert "broadcast_message" not in mock_context.user_data
+        replies = (
+            mock_update_with_callback.callback_query.message.reply_text.call_args_list
+        )
+        assert any("Начинаю рассылку" in c.args[0] for c in replies)
+        completion = next(
+            c for c in replies if c.args and "Рассылка завершена" in c.args[0]
+        )
+        assert "Отправлено: 3" in completion.args[0]
+        assert completion.kwargs.get("reply_markup") is not None
+
+    @pytest.mark.asyncio
+    async def test_broadcast_send_callback_message_id_overrides_stored_draft(
+        self, handler, mock_update_with_callback, mock_context
+    ):
+        """Кнопка «Отправить» на старом предпросмотре шлёт то сообщение, чей id в callback."""
+        mock_passenger = PassengerFactory.build(role="chief", id=5)
+        recipients = [PassengerFactory.build()]
+        mock_context.user_data["broadcast_mode"] = True
+        mock_context.user_data["bus_id"] = 1
+        mock_context.user_data["broadcast_message"] = {
+            "chat_id": 100,
+            "message_id": 999,
+        }
+        mock_update_with_callback.callback_query.data = f"{BROADCAST_CHIEF_SEND}_200"
+        mock_update_with_callback.effective_chat.id = 100
+        stats = BroadcastStats(sent=1, failed=0, forbidden=0)
+
+        with (
+            patch.object(
+                handler, "get_or_create_passenger", return_value=mock_passenger
+            ),
+            patch.object(
+                handler.broadcast_service,
+                "get_passengers_for_broadcast",
+                return_value=recipients,
+            ),
+            patch.object(
+                handler.broadcast_service,
+                "send_broadcast",
+                new_callable=AsyncMock,
+                return_value=stats,
+            ) as send_bc,
+        ):
+            await handler.broadcast_send(mock_update_with_callback, mock_context)
+
+        send_bc.assert_called_once_with(
+            mock_context.bot,
+            recipients,
+            100,
+            200,
+            ANY,
+            ANY,
+        )
+        assert (
+            "Для ответа на сообщение напишите в личные сообщения шефу автобуса"
+            in send_bc.call_args.args[5]
+        )
+
+    @pytest.mark.asyncio
+    async def test_broadcast_cancel_forbidden(
+        self, handler, mock_update_with_callback, mock_context
+    ):
+        mock_passenger = PassengerFactory.build(role="user")
+
+        with (
+            patch.object(
+                handler, "get_or_create_passenger", return_value=mock_passenger
+            ),
+            patch.object(handler, "_broadcast_error", new_callable=AsyncMock) as err,
+        ):
+            await handler.broadcast_cancel(mock_update_with_callback, mock_context)
+
+        err.assert_called_once_with(
+            mock_update_with_callback, mock_context, "Доступ запрещен"
+        )
+
+    @pytest.mark.asyncio
+    async def test_broadcast_cancel_clears_state(
+        self, handler, mock_update_with_callback, mock_context
+    ):
+        mock_passenger = PassengerFactory.build(role="chief")
+        mock_context.user_data["broadcast_mode"] = True
+        mock_context.user_data["broadcast_message"] = {"chat_id": 1, "message_id": 2}
+        mock_context.user_data["bus_id"] = 9
+
+        with patch.object(
+            handler, "get_or_create_passenger", return_value=mock_passenger
+        ):
+            await handler.broadcast_cancel(mock_update_with_callback, mock_context)
+
+        assert "broadcast_mode" not in mock_context.user_data
+        assert "broadcast_message" not in mock_context.user_data
+        assert "bus_id" not in mock_context.user_data
 
 
 def mock_open_file_content():

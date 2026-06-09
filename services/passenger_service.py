@@ -1,9 +1,5 @@
-"""
-Сервис для работы с пассажирами
-"""
-
 import logging
-from typing import Optional, Tuple
+from typing import Dict, Optional, Tuple
 
 from database.repositories import PassengerRepository
 from models.entities import Passenger
@@ -39,40 +35,32 @@ class PassengerService:
             passenger = self.repository.create(username, chat_id)
             return passenger, True
 
-    def check_user_fio(self, username: str) -> Tuple[bool, Optional[Passenger]]:
-        """
-        Проверяет, есть ли у пользователя заполненное ФИО
-
-        Returns:
-            Tuple[bool, Optional[Passenger]]: (есть_ли_фио, пассажир)
-        """
+    def update_personal_data(
+        self, username: str, data: Dict[str, str]
+    ) -> Tuple[bool, str]:
+        """Обновляет персональные данные пассажира"""
         try:
-            passenger = self.repository.get_by_username(username)
-            if passenger and passenger.has_fio():
-                return True, passenger
-            return False, passenger
+            self.repository.update_personal_data(
+                username=username,
+                last_name=data["last_name"],
+                first_name=data["first_name"],
+                patronymic=data.get("patronymic"),
+                phone=data["phone"],
+                birth_date=data["birth_date"],
+                passport_number=data["passport_number"],
+                citizenship=data["citizenship"],
+            )
+            return True, ""
         except Exception as e:
-            logger.error(f"Ошибка при проверке ФИО: {str(e)}")
-            return False, None
-
-    def update_fio(self, username: str, fio: str) -> bool:
-        """
-        Обновляет ФИО пассажира
-
-        Returns:
-            bool: Успешность операции
-        """
-        try:
-            if not fio or len(fio.strip()) < 5:
-                return False
-
-            self.repository.update_fio(username, fio.strip())
-            return True
-        except Exception as e:
-            logger.error(f"Ошибка при обновлении ФИО: {str(e)}")
-            return False
+            logger.error(f"Ошибка при обновлении персональных данных: {str(e)}")
+            return False, "Не удалось сохранить персональные данные"
 
     def is_admin(self, username: str) -> bool:
         """Проверяет, является ли пользователь администратором"""
         passenger = self.repository.get_by_username(username)
         return passenger.is_admin() if passenger else False
+
+    def is_chief(self, username: str) -> bool:
+        """Проверяет, является ли пользователь шефом автобуса"""
+        passenger = self.repository.get_by_username(username)
+        return passenger.is_chief() if passenger else False

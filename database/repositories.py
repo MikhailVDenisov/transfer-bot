@@ -4,10 +4,17 @@
 
 import logging
 from datetime import datetime
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from database.connection import db_connection
-from models.entities import Bus, BusOwner, Passenger, Reservation, WaitingListRecord
+from models.entities import (
+    Bus,
+    BusOwner,
+    ManualReservation,
+    Passenger,
+    Reservation,
+    WaitingListRecord,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -43,10 +50,46 @@ class PassengerRepository:
         )
 
     @staticmethod
-    def update_fio(username: str, fio: str) -> None:
-        """Обновляет ФИО пассажира"""
+    def update_personal_data(
+        username: str,
+        last_name: str,
+        first_name: str,
+        patronymic: Optional[str],
+        phone: str,
+        birth_date: str,
+        passport_number: str,
+        citizenship: str,
+    ) -> None:
+        """Обновляет персональные данные пассажира"""
+        fio_parts = [last_name.strip(), first_name.strip()]
+        if patronymic and patronymic.strip():
+            fio_parts.append(patronymic.strip())
+
         db_connection.execute_query(
-            "UPDATE Passengers SET FIO = ? WHERE Telegram_username = ?", (fio, username)
+            """
+            UPDATE Passengers
+            SET LastName = ?,
+                FirstName = ?,
+                Patronymic = ?,
+                FIO = ?,
+                Phone = ?,
+                BirthDate = ?,
+                PassportNumber = ?,
+                Citizenship = ?,
+                PersonalDataConfirmed = TRUE
+            WHERE Telegram_username = ?
+            """,
+            (
+                last_name.strip(),
+                first_name.strip(),
+                patronymic.strip() if patronymic and patronymic.strip() else None,
+                " ".join(fio_parts),
+                phone.strip(),
+                birth_date.strip(),
+                passport_number.strip(),
+                citizenship.strip(),
+                username,
+            ),
         )
 
     @staticmethod
@@ -55,6 +98,17 @@ class PassengerRepository:
         results = db_connection.execute_query(
             "SELECT * FROM Passengers", fetch_all=True
         )
+        return [Passenger.from_tuple(row) for row in results] if results else []
+
+    @staticmethod
+    def get_by_bus(bus_id: int) -> List[Passenger]:
+        """Получает пассажиров по автобусу и направлению"""
+        results = db_connection.execute_query(
+            "SELECT p.* FROM Passengers p JOIN Reservations r ON p.ID = r.PassengerID  WHERE r.BusID = ?",
+            (bus_id,),
+            fetch_all=True,
+        )
+
         return [Passenger.from_tuple(row) for row in results] if results else []
 
 
@@ -90,6 +144,16 @@ class BusRepository:
         results = db_connection.execute_query(
             "SELECT * FROM Buses WHERE Direction = ? AND (is_active = TRUE OR is_active IS NULL)",
             (direction,),
+            fetch_all=True,
+        )
+        return [Bus.from_tuple(row) for row in results] if results else []
+
+    @staticmethod
+    def get_by_chief(chief_id: int) -> List[Bus]:
+        """Получает автобусы по владельцу и направлению"""
+        results = db_connection.execute_query(
+            "SELECT b.* FROM Buses b JOIN BusOwners bo ON b.ID = bo.BusID WHERE bo.chiefID = ?",
+            (chief_id,),
             fetch_all=True,
         )
         return [Bus.from_tuple(row) for row in results] if results else []
@@ -179,8 +243,15 @@ class WaitingListRepository:
     @staticmethod
     def update_notification(record_id: int, status: str) -> None:
         """Обновляет статус уведомления"""
+        if status == "Yes":
+            db_connection.execute_query(
+                "UPDATE WaitingList SET NotificationSent = ?, NotificationSentAt = ? WHERE ID = ?",
+                (status, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), record_id),
+            )
+            return
+
         db_connection.execute_query(
-            "UPDATE WaitingList SET NotificationSent = ? WHERE ID = ?",
+            "UPDATE WaitingList SET NotificationSent = ?, NotificationSentAt = NULL WHERE ID = ?",
             (status, record_id),
         )
 
@@ -189,6 +260,14 @@ class WaitingListRepository:
         """Обновляет статус записи"""
         db_connection.execute_query(
             "UPDATE WaitingList SET Status = ? WHERE ID = ?", (status, record_id)
+        )
+
+    @staticmethod
+    def update_request_time(record_id: int, request_time: str) -> None:
+        """Обновляет время заявки для перестановки в конец очереди"""
+        db_connection.execute_query(
+            "UPDATE WaitingList SET RequestTime = ? WHERE ID = ?",
+            (request_time, record_id),
         )
 
     @staticmethod
@@ -211,6 +290,24 @@ class WaitingListRepository:
         )
         return [WaitingListRecord.from_tuple(row) for row in results] if results else []
 
+    @staticmethod
+    def get_by_passenger(passenger_id: int) -> List[WaitingListRecord]:
+        """Получает активные записи листа ожидания по пассажиру"""
+        results = db_connection.execute_query(
+            "SELECT * FROM WaitingList WHERE PassengerID = ? AND Status = 'Waiting'",
+            (passenger_id,),
+            fetch_all=True,
+        )
+        return [WaitingListRecord.from_tuple(row) for row in results] if results else []
+
+    @staticmethod
+    def delete_by_passenger_and_bus(passenger_id: int, bus_id: int) -> None:
+        """Удаляет активные записи ожидания по пассажиру и автобусу"""
+        db_connection.execute_query(
+            "DELETE FROM WaitingList WHERE PassengerID = ? AND BusID = ? AND Status = 'Waiting'",
+            (passenger_id, bus_id),
+        )
+
 
 class BusOwnerRepository:
     """Репозиторий для работы с владельцами автобусов"""
@@ -228,3 +325,118 @@ class BusOwnerRepository:
             "SELECT * FROM BusOwners WHERE BusID = ?", (bus_id,), fetch_all=True
         )
         return [BusOwner.from_tuple(row) for row in results] if results else []
+
+
+class ManualReservationRepository:
+    """Репозиторий для работы с ручными резервациями"""
+
+    @staticmethod
+    def _normalize_username(username: Optional[str]) -> str:
+        if not username:
+            return ""
+        return username.strip().lstrip("@").lower()
+
+    @staticmethod
+    def get_all() -> List[ManualReservation]:
+        """Получает все ручные резервации"""
+        results = db_connection.execute_query(
+            "SELECT * FROM ManualReservations", fetch_all=True
+        )
+        return [ManualReservation.from_tuple(row) for row in results] if results else []
+
+    @staticmethod
+    def create(telegram_username: str, bus_id: int, is_booked: bool = False) -> None:
+        """
+        Создает или обновляет ручную резервацию.
+        В случае конфликта по пользователю и автобусу обновляет флаг брони.
+        """
+        db_connection.execute_query(
+            """
+            INSERT INTO ManualReservations (TelegramUsername, BusID, IsBooked)
+            VALUES (?, ?, ?)
+            ON CONFLICT(TelegramUsername, BusID)
+            DO UPDATE SET IsBooked = excluded.IsBooked
+            """,
+            (telegram_username, bus_id, bool(is_booked)),
+        )
+
+    @staticmethod
+    def has_unbooked_by_username_and_bus(telegram_username: str, bus_id: int) -> bool:
+        """Проверяет, есть ли незакрытая ручная резервация для пользователя и автобуса"""
+        normalized_username = ManualReservationRepository._normalize_username(
+            telegram_username
+        )
+        if not normalized_username:
+            return False
+
+        result = db_connection.execute_query(
+            """
+            SELECT 1
+            FROM ManualReservations
+            WHERE BusID = ?
+              AND (IsBooked = FALSE OR IsBooked IS NULL)
+              AND lower(ltrim(TelegramUsername, '@')) = ?
+            LIMIT 1
+            """,
+            (bus_id, normalized_username),
+            fetch_one=True,
+        )
+        return bool(result)
+
+    @staticmethod
+    def get_unbooked_count_by_bus(bus_id: int) -> int:
+        """Возвращает количество незакрытых ручных резерваций по автобусу"""
+        result = db_connection.execute_query(
+            """
+            SELECT COUNT(*)
+            FROM ManualReservations
+            WHERE BusID = ?
+              AND (IsBooked = FALSE OR IsBooked IS NULL)
+            """,
+            (bus_id,),
+            fetch_one=True,
+        )
+        return int(result[0]) if result else 0
+
+    @staticmethod
+    def get_unbooked_counts_by_bus(bus_ids: List[int]) -> Dict[int, int]:
+        """Возвращает количество незакрытых ручных резерваций по списку автобусов"""
+        if not bus_ids:
+            return {}
+
+        placeholders = ", ".join(["?"] * len(bus_ids))
+        results = db_connection.execute_query(
+            f"""
+            SELECT BusID, COUNT(*)
+            FROM ManualReservations
+            WHERE BusID IN ({placeholders})
+              AND (IsBooked = FALSE OR IsBooked IS NULL)
+            GROUP BY BusID
+            """,
+            tuple(bus_ids),
+            fetch_all=True,
+        )
+        if not results:
+            return {}
+
+        return {int(row[0]): int(row[1]) for row in results}
+
+    @staticmethod
+    def mark_booked_by_username_and_bus(telegram_username: str, bus_id: int) -> None:
+        """Отмечает ручную резервацию как использованную после фактического бронирования"""
+        normalized_username = ManualReservationRepository._normalize_username(
+            telegram_username
+        )
+        if not normalized_username:
+            return
+
+        db_connection.execute_query(
+            """
+            UPDATE ManualReservations
+            SET IsBooked = TRUE
+            WHERE BusID = ?
+              AND (IsBooked = FALSE OR IsBooked IS NULL)
+              AND lower(ltrim(TelegramUsername, '@')) = ?
+            """,
+            (bus_id, normalized_username),
+        )

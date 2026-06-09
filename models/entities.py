@@ -15,7 +15,14 @@ class Passenger:
     telegram_username: Optional[str] = None
     chat_id: Optional[str] = None
     fio: Optional[str] = None
+    last_name: Optional[str] = None
+    first_name: Optional[str] = None
+    patronymic: Optional[str] = None
     phone: Optional[str] = None
+    birth_date: Optional[str] = None
+    passport_number: Optional[str] = None
+    citizenship: Optional[str] = None
+    personal_data_confirmed: bool = False
     comment: Optional[str] = None
     role: str = "user"
 
@@ -30,15 +37,38 @@ class Passenger:
             phone=data[4],
             comment=data[5],
             role=data[6] if len(data) > 6 else "user",
+            passport_number=data[7] if len(data) > 7 else None,
+            citizenship=data[8] if len(data) > 8 else None,
+            last_name=data[9] if len(data) > 9 else None,
+            first_name=data[10] if len(data) > 10 else None,
+            patronymic=data[11] if len(data) > 11 else None,
+            birth_date=data[12] if len(data) > 12 else None,
+            personal_data_confirmed=bool(data[13]) if len(data) > 13 else False,
         )
 
     def is_admin(self) -> bool:
         """Проверяет, является ли пассажир администратором"""
         return self.role and self.role.lower() == "admin"
 
-    def has_fio(self) -> bool:
-        """Проверяет, заполнено ли ФИО"""
-        return bool(self.fio and self.fio.strip())
+    def is_chief(self) -> bool:
+        """Проверяет, является ли пассажир шефом автобуса"""
+        return self.role and self.role.lower() == "chief"
+
+    def has_personal_data(self) -> bool:
+        """Проверяет, заполнены ли обязательные персональные данные"""
+        return all(
+            [
+                self.last_name and self.last_name.strip(),
+                self.first_name and self.first_name.strip(),
+                self.phone and self.phone.strip(),
+                self.birth_date and self.birth_date.strip(),
+                self.passport_number and self.passport_number.strip(),
+            ]
+        )
+
+    def has_confirmed_personal_data(self) -> bool:
+        """Проверяет, заполнены и подтверждены ли персональные данные"""
+        return self.has_personal_data() and self.personal_data_confirmed
 
 
 @dataclass
@@ -111,6 +141,7 @@ class WaitingListRecord:
     request_time: Optional[str] = None
     status: str = "Waiting"
     notification_sent: str = "No"
+    notification_sent_at: Optional[str] = None
 
     @classmethod
     def from_tuple(cls, data: tuple) -> "WaitingListRecord":
@@ -122,6 +153,7 @@ class WaitingListRecord:
             request_time=data[3],
             status=data[4] if len(data) > 4 else "Waiting",
             notification_sent=data[5] if len(data) > 5 else "No",
+            notification_sent_at=data[6] if len(data) > 6 else None,
         )
 
     def is_waiting(self) -> bool:
@@ -149,3 +181,25 @@ class BusOwner:
     def from_tuple(cls, data: tuple) -> "BusOwner":
         """Создает объект BusOwner из кортежа данных из БД"""
         return cls(id=data[0], bus_id=data[1], chief_id=data[2])
+
+
+@dataclass
+class ManualReservation:
+    """Модель ручной резервации места в автобусе"""
+
+    id: Optional[int] = None
+    telegram_username: Optional[str] = None
+    bus_id: Optional[int] = None
+    is_booked: bool = False
+    created_at: Optional[str] = None
+
+    @classmethod
+    def from_tuple(cls, data: tuple) -> "ManualReservation":
+        """Создает объект ManualReservation из кортежа данных из БД"""
+        return cls(
+            id=data[0],
+            telegram_username=data[1],
+            bus_id=data[2],
+            is_booked=bool(data[3]) if len(data) > 3 else False,
+            created_at=data[4] if len(data) > 4 else None,
+        )

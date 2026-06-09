@@ -5,7 +5,11 @@
 import logging
 from typing import List, Optional
 
-from database.repositories import BusRepository, ReservationRepository
+from database.repositories import (
+    BusRepository,
+    ManualReservationRepository,
+    ReservationRepository,
+)
 from models.entities import Bus
 
 logger = logging.getLogger(__name__)
@@ -17,6 +21,7 @@ class BusService:
     def __init__(self):
         self.bus_repository = BusRepository()
         self.reservation_repository = ReservationRepository()
+        self.manual_reservation_repository = ManualReservationRepository()
 
     def get_available_directions(self) -> List[str]:
         """Получает список доступных направлений"""
@@ -26,7 +31,8 @@ class BusService:
                 bus.direction
                 for bus in buses
                 if bus.direction and bus.direction.strip()
-            )
+            ),
+            reverse=True,
         )
         return directions
 
@@ -47,8 +53,11 @@ class BusService:
             }
         """
         reservations = self.reservation_repository.get_by_bus(bus.id)
-        booked = len(reservations)
-        free = bus.capacity - booked
+        manual_reserved = self.manual_reservation_repository.get_unbooked_count_by_bus(
+            bus.id
+        )
+        booked = len(reservations) + manual_reserved
+        free = max(bus.capacity - booked, 0)
 
         return {
             "capacity": bus.capacity,
@@ -68,3 +77,7 @@ class BusService:
     def get_active_buses(self) -> List[Bus]:
         """Получает только активные автобусы"""
         return self.bus_repository.get_active_buses()
+
+    def get_buses_by_chief(self, chief_id: int) -> List[Bus]:
+        """Получает автобусы по шефу"""
+        return self.bus_repository.get_by_chief(chief_id)

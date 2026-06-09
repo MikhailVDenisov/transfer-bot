@@ -3,20 +3,36 @@
 """
 
 import pytest
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup
 
 from models.entities import Bus, Reservation
-from tests.factories import BusFactory, ReservationFactory
+from tests.factories import BusFactory, ReservationFactory, WaitingListRecordFactory
+from utils.const import (
+    BROADCAST_CHIEF_CANCEL,
+    BROADCAST_CHIEF_SELECT_BUS,
+    EXPORT_CHIEF_SELECT_BUS,
+)
 from utils.keyboards import (
     create_back_keyboard,
     create_booking_cancel_keyboard,
     create_buses_keyboard,
+    create_cancel_broadcast_chief_keyboard,
+    create_chief_buses_keyboard,
+    create_chief_export_buses_keyboard,
+    create_citizenship_keyboard,
     create_confirm_booking_keyboard,
     create_directions_keyboard,
     create_main_menu_keyboard,
+    create_personal_data_confirm_keyboard,
+    create_personal_data_export_buses_keyboard,
+    create_personal_data_prompt_keyboard,
+    create_personal_data_view_keyboard,
+    create_phone_request_keyboard,
+    create_reply_keyboard_remove,
     create_waiting_list_keyboard,
 )
 from utils.messages import (
+    format_available_seats_summary,
     format_booking_info,
     format_booking_success_message,
     format_bus_info,
@@ -24,7 +40,13 @@ from utils.messages import (
     format_user_bookings_message,
     format_waiting_notification_message,
 )
-from utils.validators import validate_fio, validate_phone, validate_username
+from utils.validators import (
+    validate_citizenship,
+    validate_fio,
+    validate_passport_number,
+    validate_phone,
+    validate_username,
+)
 
 
 class TestKeyboards:
@@ -35,31 +57,43 @@ class TestKeyboards:
         keyboard = create_main_menu_keyboard(is_admin=False)
 
         assert isinstance(keyboard, InlineKeyboardMarkup)
-        assert len(keyboard.inline_keyboard) == 5  # 5 основных кнопок
+        assert len(keyboard.inline_keyboard) == 6  # 6 основных кнопок
 
         # Проверяем наличие основных кнопок
         button_texts = [
             button.text for row in keyboard.inline_keyboard for button in row
         ]
         assert "Записаться на автобус" in button_texts
+        assert "Персональные данные" in button_texts
         assert "Посмотреть свою бронь" in button_texts
         assert "Отменить запись" in button_texts
         assert "Как добраться?" in button_texts
         assert "FAQ" in button_texts
-        assert "Выгрузить данные" not in button_texts
+        assert "Выгрузить персональные данные пассажиров" not in button_texts
 
     def test_create_main_menu_keyboard_admin(self):
         """Тест создания главного меню для администратора"""
         keyboard = create_main_menu_keyboard(is_admin=True)
 
         assert isinstance(keyboard, InlineKeyboardMarkup)
-        assert len(keyboard.inline_keyboard) == 6  # 5 основных + 1 админская
+        assert len(keyboard.inline_keyboard) == 7  # 6 основных + 1 админское
 
         # Проверяем наличие админской кнопки
         button_texts = [
             button.text for row in keyboard.inline_keyboard for button in row
         ]
-        assert "Выгрузить данные" in button_texts
+        assert "Выгрузить персональные данные пассажиров" in button_texts
+        # assert "Выгрузить данные" in button_texts
+
+    def test_create_main_menu_keyboard_chief(self):
+        """Тест создания главного меню для шефа автобуса"""
+        keyboard = create_main_menu_keyboard(is_admin=False, is_chief=True)
+
+        button_texts = [
+            button.text for row in keyboard.inline_keyboard for button in row
+        ]
+        assert "Отправить сообщение моим пассажирам" in button_texts
+        assert "Выгрузить список пассажиров" in button_texts
 
     def test_create_directions_keyboard(self):
         """Тест создания клавиатуры с направлениями"""
@@ -143,6 +177,38 @@ class TestKeyboards:
         assert any("БУС-001" in text for text in button_texts)
         assert "Назад" in button_texts
 
+    def test_create_booking_cancel_keyboard_keeps_cancel_for_hidden_bus(self):
+        """Даже если автобус недоступен в списке, кнопка отмены остается."""
+        reservations = [ReservationFactory.build(id=1, bus_id=999, direction="Туда")]
+
+        keyboard = create_booking_cancel_keyboard(reservations, buses=[])
+
+        assert isinstance(keyboard, InlineKeyboardMarkup)
+        assert len(keyboard.inline_keyboard) == 2  # 1 бронь + кнопка "Назад"
+        assert keyboard.inline_keyboard[0][0].callback_data == "cancel_reservation_1"
+        assert "Направление: Туда" in keyboard.inline_keyboard[0][0].text
+        assert "бронирование закрыто" in keyboard.inline_keyboard[0][0].text
+
+    def test_create_booking_cancel_keyboard_inactive_bus_has_full_text_and_closed(self):
+        """Для неактивного автобуса сохраняем полный текст и дописываем статус."""
+        buses = [
+            BusFactory.build(
+                id=1,
+                number="БУС-001",
+                departure_date="2024-01-15",
+                departure_time="10:00",
+                direction="Туда",
+                is_active=False,
+            )
+        ]
+        reservations = [ReservationFactory.build(id=1, bus_id=1, direction="Туда")]
+
+        keyboard = create_booking_cancel_keyboard(reservations, buses)
+
+        button_text = keyboard.inline_keyboard[0][0].text
+        assert "Автобус БУС-001 (2024-01-15 10:00) Направление: Туда" in button_text
+        assert button_text.endswith("(бронирование закрыто)")
+
     def test_create_waiting_list_keyboard(self):
         """Тест создания клавиатуры для листа ожидания"""
         buses = [
@@ -183,15 +249,176 @@ class TestKeyboards:
         assert keyboard.inline_keyboard[0][0].text == "Назад"
         assert keyboard.inline_keyboard[0][0].callback_data == "back_to_menu"
 
+    def test_create_chief_export_buses_keyboard(self):
+        """Тест клавиатуры выбора автобуса для выгрузки шефом"""
+        buses = [
+            BusFactory.build(
+                id=7,
+                number="БУС-007",
+                departure_date="2024-01-15",
+                departure_time="10:00",
+            )
+        ]
+
+        keyboard = create_chief_export_buses_keyboard(buses)
+
+        assert isinstance(keyboard, InlineKeyboardMarkup)
+        assert keyboard.inline_keyboard[0][0].callback_data == (
+            f"{EXPORT_CHIEF_SELECT_BUS}7"
+        )
+
+    def test_create_personal_data_prompt_keyboard(self):
+        """Тест клавиатуры перехода к вводу персональных данных"""
+        keyboard = create_personal_data_prompt_keyboard("personal_data_from_booking")
+
+        assert isinstance(keyboard, InlineKeyboardMarkup)
+        assert len(keyboard.inline_keyboard) == 2
+        assert keyboard.inline_keyboard[0][0].text == "Заполнить данные"
+        assert (
+            keyboard.inline_keyboard[0][0].callback_data == "personal_data_from_booking"
+        )
+
+    def test_create_citizenship_keyboard(self):
+        """Тест клавиатуры гражданства со значением по умолчанию"""
+        keyboard = create_citizenship_keyboard()
+
+        assert isinstance(keyboard, ReplyKeyboardMarkup)
+        assert keyboard.keyboard[0][0].text == "РФ"
+
+    def test_create_phone_request_keyboard(self):
+        """Тест клавиатуры запроса номера телефона из Telegram"""
+        keyboard = create_phone_request_keyboard()
+
+        assert isinstance(keyboard, ReplyKeyboardMarkup)
+        assert keyboard.keyboard[0][0].text == "Поделиться номером"
+        assert keyboard.keyboard[0][0].request_contact is True
+
+    def test_create_personal_data_confirm_keyboard(self):
+        """Тест клавиатуры подтверждения персональных данных"""
+        keyboard = create_personal_data_confirm_keyboard()
+
+        assert isinstance(keyboard, InlineKeyboardMarkup)
+        assert len(keyboard.inline_keyboard[0]) == 2
+        assert keyboard.inline_keyboard[0][0].text == "Редактировать"
+        assert (
+            keyboard.inline_keyboard[0][0].callback_data == "personal_data_confirm_edit"
+        )
+        assert keyboard.inline_keyboard[0][1].text == "Подтвердить данные"
+        assert (
+            keyboard.inline_keyboard[0][1].callback_data == "personal_data_confirm_save"
+        )
+
+    def test_create_personal_data_view_keyboard(self):
+        """Тест клавиатуры просмотра персональных данных"""
+        keyboard = create_personal_data_view_keyboard()
+
+        assert isinstance(keyboard, InlineKeyboardMarkup)
+        assert keyboard.inline_keyboard[0][0].text == "Редактировать"
+        assert keyboard.inline_keyboard[0][0].callback_data == "personal_data_edit"
+        assert keyboard.inline_keyboard[1][0].text == "Назад"
+
+    def test_create_personal_data_view_keyboard_without_edit(self):
+        """Тест клавиатуры просмотра персональных данных без редактирования"""
+        keyboard = create_personal_data_view_keyboard(allow_edit=False)
+
+        assert isinstance(keyboard, InlineKeyboardMarkup)
+        assert len(keyboard.inline_keyboard) == 1
+        assert keyboard.inline_keyboard[0][0].text == "Назад"
+
+    def test_create_reply_keyboard_remove(self):
+        """Тест удаления reply-клавиатуры"""
+        keyboard = create_reply_keyboard_remove()
+
+        assert keyboard is not None
+
     def test_create_confirm_booking_keyboard(self):
         """Тест создания клавиатуры для подтверждения брони"""
         keyboard = create_confirm_booking_keyboard(bus_id=1)
 
         assert isinstance(keyboard, InlineKeyboardMarkup)
-        assert len(keyboard.inline_keyboard) == 1
+        assert len(keyboard.inline_keyboard) == 2
         assert len(keyboard.inline_keyboard[0]) == 1
         assert keyboard.inline_keyboard[0][0].text == "Подтвердить бронь"
         assert keyboard.inline_keyboard[0][0].callback_data == "select_bus_1"
+        assert len(keyboard.inline_keyboard[1]) == 1
+        assert keyboard.inline_keyboard[1][0].text == "Удалить из листа ожидания"
+        assert keyboard.inline_keyboard[1][0].callback_data == "remove_waiting_bus_1"
+
+    def test_create_chief_buses_keyboard(self):
+        """Тест создания клавиатуры с автобусами для рассылки шефа"""
+        buses = [
+            BusFactory.build(id=1, number="БУС-001", direction="Переславль"),
+            BusFactory.build(id=2, number="БУС-002", direction="Москва"),
+        ]
+
+        keyboard = create_chief_buses_keyboard(buses)
+
+        assert isinstance(keyboard, InlineKeyboardMarkup)
+        assert len(keyboard.inline_keyboard) == 3  # 2 автобуса + «Назад»
+
+        button_texts = [
+            button.text for row in keyboard.inline_keyboard for button in row
+        ]
+        assert any("БУС-001" in text for text in button_texts)
+        assert any("Переславль" in text for text in button_texts)
+        assert any("БУС-002" in text for text in button_texts)
+        assert any("Москва" in text for text in button_texts)
+        assert "Назад" in button_texts
+
+        assert keyboard.inline_keyboard[0][0].callback_data == (
+            f"{BROADCAST_CHIEF_SELECT_BUS}1"
+        )
+        assert keyboard.inline_keyboard[1][0].callback_data == (
+            f"{BROADCAST_CHIEF_SELECT_BUS}2"
+        )
+        assert keyboard.inline_keyboard[2][0].callback_data == "back_to_menu"
+
+    def test_create_chief_buses_keyboard_empty(self):
+        """Тест клавиатуры шефа при отсутствии автобусов — только «Назад»"""
+        keyboard = create_chief_buses_keyboard([])
+
+        assert isinstance(keyboard, InlineKeyboardMarkup)
+        assert len(keyboard.inline_keyboard) == 1
+        assert keyboard.inline_keyboard[0][0].text == "Назад"
+        assert keyboard.inline_keyboard[0][0].callback_data == "back_to_menu"
+
+    def test_cancel_broadcast_chief_keyboard(self):
+        """Тест клавиатуры отмены рассылки шефа"""
+        keyboard = create_cancel_broadcast_chief_keyboard()
+
+        assert isinstance(keyboard, InlineKeyboardMarkup)
+        assert len(keyboard.inline_keyboard) == 1
+        assert len(keyboard.inline_keyboard[0]) == 1
+        assert keyboard.inline_keyboard[0][0].text == "Отмена"
+        assert keyboard.inline_keyboard[0][0].callback_data == BROADCAST_CHIEF_CANCEL
+
+    def test_create_personal_data_export_buses_keyboard(self):
+        """Тест клавиатуры выбора автобусов для выгрузки персональных данных"""
+        buses = [
+            BusFactory.build(
+                id=1,
+                number="БУС-001",
+                departure_date="2024-01-15",
+                departure_time="10:00",
+            ),
+            BusFactory.build(
+                id=2,
+                number="БУС-002",
+                departure_date="2024-01-15",
+                departure_time="12:00",
+            ),
+        ]
+
+        keyboard = create_personal_data_export_buses_keyboard(buses, [2])
+
+        assert isinstance(keyboard, InlineKeyboardMarkup)
+        button_texts = [
+            button.text for row in keyboard.inline_keyboard for button in row
+        ]
+        assert "⬜ Автобус БУС-001 (2024-01-15 10:00)" in button_texts
+        assert "✅ Автобус БУС-002 (2024-01-15 12:00)" in button_texts
+        assert "Сформировать выгрузку" in button_texts
+        assert "Назад" in button_texts
 
 
 class TestMessages:
@@ -258,7 +485,7 @@ class TestMessages:
 
         result = format_booking_success_message(bus)
 
-        expected = "Вы успешно записаны на автобус: БУС-001 (2024-01-15 10:00) Москва-Переславль-Залесский"
+        expected = "Вы успешно записаны на автобус: БУС-001 (2024-01-15 10:00) Москва-Переславль-Залесский.\nОжидайте сообщения от шефа автобуса ближе к дате отправки"
         assert result == expected
 
     def test_format_waiting_notification_message(self):
@@ -269,7 +496,7 @@ class TestMessages:
 
         result = format_waiting_notification_message(bus)
 
-        expected = "🚌 Место на автобус БУС-001 (2024-01-15 10:00) теперь доступно!\n❗У вас есть 10 минут, чтобы подтвердить бронь, после бот отправит пуш следующему в листе ожидания. \nНажмите кнопку ниже чтобы подтвердить бронь:"
+        expected = "🚌 Место на автобус БУС-001 (2024-01-15 10:00) теперь доступно!\n❗Освободилось место в автобусе. Успей записаться пока не заняли другие. \nНажмите кнопку ниже чтобы подтвердить бронь:"
         assert result == expected
 
     def test_format_buses_list_message(self):
@@ -330,6 +557,68 @@ class TestMessages:
 
         assert result == "Вы не записаны ни на один автобус"
 
+    def test_format_user_bookings_message_with_waiting_list(self):
+        """Тест форматирования сообщения со статусом листа ожидания"""
+        buses = [
+            BusFactory.build(
+                id=10,
+                number="БУС-777",
+                departure_date="2024-01-15",
+                departure_time="11:30",
+                departure_place="Москва",
+                destination="Переславль-Залесский",
+                direction="Туда",
+            )
+        ]
+        waiting_records = [WaitingListRecordFactory.build(bus_id=10)]
+
+        result = format_user_bookings_message([], buses, waiting_records)
+
+        assert "Вы в листе ожидания" in result
+        assert "БУС-777" in result
+
+    def test_format_user_bookings_message_with_hidden_bus_booking(self):
+        """Скрытый/закрытый автобус не должен прятать бронь из сообщения."""
+        reservations = [ReservationFactory.build(bus_id=999)]
+
+        result = format_user_bookings_message(reservations, [])
+
+        assert "Ваши записи:" in result
+        assert "Автобус ID 999 (бронирование закрыто)" in result
+
+    def test_format_available_seats_summary(self):
+        """Тест сводки доступных мест с листом ожидания."""
+        buses = [
+            BusFactory.build(
+                id=1,
+                number="БУС-001",
+                departure_time="08:00",
+                direction="Туда",
+            ),
+            BusFactory.build(
+                id=2,
+                number="БУС-002",
+                departure_time="09:30",
+                direction="Туда",
+            ),
+            BusFactory.build(
+                id=3,
+                number="БУС-003",
+                departure_time="11:00",
+                direction="Обратно",
+            ),
+        ]
+        available = {1: 3, 2: 0, 3: 1}
+
+        result = format_available_seats_summary(buses, available)
+
+        assert "Информация о доступных местах:" in result
+        assert "Направление: Туда" in result
+        assert "Направление: Обратно" in result
+        assert "Автобус БУС-001 08:00 - 3 мест" in result
+        assert "Автобус БУС-002 09:30 - Доступен лист ожидания" in result
+        assert "Автобус БУС-003 11:00 - 1 мест" in result
+
 
 class TestValidators:
     """Тесты для валидаторов"""
@@ -372,8 +661,7 @@ class TestValidators:
             "+7900123456",
             "8900123456",
             "9001234567",
-            "+7 (900) 123-45-67",
-            "",  # Телефон не обязателен
+            "+79001234567",
         ]
 
         for phone in valid_phones:
@@ -384,6 +672,16 @@ class TestValidators:
     def test_validate_phone_invalid(self):
         """Тест валидации некорректного номера телефона"""
         invalid_cases = [
+            ("", "Номер телефона не может быть пустым"),
+            (
+                "+7 (900) 123-45-67",
+                "Номер телефона может содержать только цифры и символ +",
+            ),
+            (
+                "8900-123-45-67",
+                "Номер телефона может содержать только цифры и символ +",
+            ),
+            ("8 9001234567", "Номер телефона может содержать только цифры и символ +"),
             ("123", "Номер телефона слишком короткий"),
             ("12345678901234567890", "Номер телефона слишком длинный"),
         ]
@@ -391,6 +689,47 @@ class TestValidators:
         for phone, expected_error in invalid_cases:
             is_valid, error_msg = validate_phone(phone)
             assert is_valid is False, f"Телефон '{phone}' должен быть невалидным"
+            assert expected_error in error_msg
+
+    def test_validate_passport_number_valid(self):
+        """Тест валидации корректного номера паспорта"""
+        is_valid, error_msg = validate_passport_number("1234 567890")
+
+        assert is_valid is True
+        assert error_msg == ""
+
+    def test_validate_passport_number_invalid(self):
+        """Тест валидации некорректного номера паспорта"""
+        invalid_cases = [
+            ("", "Серия и номер паспорта не могут быть пустыми"),
+        ]
+
+        for passport_number, expected_error in invalid_cases:
+            is_valid, error_msg = validate_passport_number(passport_number)
+            assert is_valid is False
+            assert expected_error in error_msg
+
+    def test_validate_citizenship_valid(self):
+        """Тест валидации корректного гражданства"""
+        valid_values = ["РФ", "Россия", "Беларусь", "Казахстан", "Нью-Зеландия"]
+
+        for citizenship in valid_values:
+            is_valid, error_msg = validate_citizenship(citizenship)
+            assert is_valid is True
+            assert error_msg == ""
+
+    def test_validate_citizenship_invalid(self):
+        """Тест валидации некорректного гражданства"""
+        invalid_cases = [
+            ("-", "Гражданство должно содержать не менее 2 символов"),
+            ("1", "Гражданство должно содержать не менее 2 символов"),
+            ("РФ123", "Гражданство должно быть текстом"),
+            ("USA!", "Гражданство должно быть текстом"),
+        ]
+
+        for citizenship, expected_error in invalid_cases:
+            is_valid, error_msg = validate_citizenship(citizenship)
+            assert is_valid is False
             assert expected_error in error_msg
 
     def test_validate_username_valid(self):

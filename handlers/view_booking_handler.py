@@ -38,13 +38,14 @@ class ViewBookingHandler(BaseHandler):
 
             # Получаем бронирования пользователя
             reservations = self.booking_service.get_user_bookings(passenger)
+            waiting_records = self.booking_service.get_user_waiting_records(passenger)
             buses = self.bus_service.get_all_buses()
 
             # Формируем сообщение
-            message = format_user_bookings_message(reservations, buses)
+            message = format_user_bookings_message(reservations, buses, waiting_records)
 
             # Создаем клавиатуру для отмены бронирований
-            keyboard = create_booking_cancel_keyboard(reservations, buses)
+            keyboard = create_back_keyboard()
 
             await query.edit_message_text(message, reply_markup=keyboard)
 

@@ -4,7 +4,14 @@
 
 import pytest
 
-from models.entities import Bus, BusOwner, Passenger, Reservation, WaitingListRecord
+from models.entities import (
+    Bus,
+    BusOwner,
+    ManualReservation,
+    Passenger,
+    Reservation,
+    WaitingListRecord,
+)
 from tests.factories import (
     BusFactory,
     BusOwnerFactory,
@@ -35,6 +42,13 @@ class TestPassenger:
             "+7900123456",
             "Комментарий",
             "user",
+            "1234 567890",
+            "РФ",
+            "Иванов",
+            "Иван",
+            "Иванович",
+            "01.01.1990",
+            1,
         )
         passenger = Passenger.from_tuple(data)
 
@@ -45,24 +59,43 @@ class TestPassenger:
         assert passenger.phone == "+7900123456"
         assert passenger.comment == "Комментарий"
         assert passenger.role == "user"
+        assert passenger.passport_number == "1234 567890"
+        assert passenger.citizenship == "РФ"
+        assert passenger.last_name == "Иванов"
+        assert passenger.first_name == "Иван"
+        assert passenger.patronymic == "Иванович"
+        assert passenger.birth_date == "01.01.1990"
+        assert passenger.personal_data_confirmed is True
 
     def test_passenger_is_admin(self):
         """Тест проверки администратора"""
         admin = PassengerFactory.build(role="admin")
+        chief = PassengerFactory.build(role="chief")
         user = PassengerFactory.build(role="user")
 
         assert admin.is_admin() is True
+        assert chief.is_admin() is False
         assert user.is_admin() is False
 
-    def test_passenger_has_fio(self):
-        """Тест проверки наличия ФИО"""
-        passenger_with_fio = PassengerFactory.build(fio="Иванов Иван Иванович")
-        passenger_without_fio = PassengerFactory.build(fio="")
-        passenger_with_none_fio = PassengerFactory.build(fio=None)
+    def test_passenger_is_chief(self):
+        """Тест проверки администратора"""
+        admin = PassengerFactory.build(role="admin")
+        chief = PassengerFactory.build(role="chief")
+        user = PassengerFactory.build(role="user")
 
-        assert passenger_with_fio.has_fio() is True
-        assert passenger_without_fio.has_fio() is False
-        assert passenger_with_none_fio.has_fio() is False
+        assert admin.is_chief() is False
+        assert chief.is_chief() is True
+        assert user.is_chief() is False
+
+    def test_passenger_has_personal_data(self):
+        """Тест проверки наличия обязательных персональных данных"""
+        complete_passenger = PassengerFactory.build()
+        incomplete_passenger = PassengerFactory.build(passport_number="")
+        unconfirmed_passenger = PassengerFactory.build(personal_data_confirmed=False)
+
+        assert complete_passenger.has_personal_data() is True
+        assert incomplete_passenger.has_personal_data() is False
+        assert unconfirmed_passenger.has_confirmed_personal_data() is False
 
 
 class TestBus:
@@ -209,3 +242,18 @@ class TestBusOwner:
         assert owner.id == 1
         assert owner.bus_id == 1
         assert owner.chief_id == 1
+
+
+class TestManualReservation:
+    """Тесты для модели ManualReservation"""
+
+    def test_manual_reservation_from_tuple(self):
+        """Тест создания ручной резервации из кортежа"""
+        data = (1, "reserved_user", 10, 1, "2026-05-11 12:00:00")
+        reservation = ManualReservation.from_tuple(data)
+
+        assert reservation.id == 1
+        assert reservation.telegram_username == "reserved_user"
+        assert reservation.bus_id == 10
+        assert reservation.is_booked is True
+        assert reservation.created_at == "2026-05-11 12:00:00"

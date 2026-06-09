@@ -98,6 +98,43 @@ class WaitingListHandler(BaseHandler):
                 update, "Ошибка при добавлении в лист ожидания"
             )
 
+    async def remove_from_waiting_list(
+        self, update: Update, context: ContextTypes.DEFAULT_TYPE, bus_id: int
+    ):
+        """Удаляет пользователя из листа ожидания для выбранного автобуса"""
+        try:
+            query = update.callback_query
+            await query.answer()
+
+            passenger = await self.get_or_create_passenger(update)
+            if not passenger:
+                return
+
+            bus = self.bus_service.get_bus_by_id(bus_id)
+            if not bus:
+                await query.edit_message_text(
+                    "Автобус не найден.", reply_markup=create_back_keyboard()
+                )
+                return
+
+            removed = self.waiting_service.remove_from_waiting_list(passenger, bus)
+            if removed:
+                await query.edit_message_text(
+                    MESSAGES["waiting_list_removed"],
+                    reply_markup=create_back_keyboard(),
+                )
+            else:
+                await query.edit_message_text(
+                    MESSAGES["waiting_list_remove_not_found"],
+                    reply_markup=create_back_keyboard(),
+                )
+
+        except Exception as e:
+            logger.error(f"Ошибка в remove_from_waiting_list: {str(e)}")
+            await self.send_error_message(
+                update, "Ошибка при удалении из листа ожидания"
+            )
+
     async def confirm_waiting_booking(
         self, update: Update, context: ContextTypes.DEFAULT_TYPE
     ):
