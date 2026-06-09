@@ -32,6 +32,7 @@ from utils.keyboards import (
     create_waiting_list_keyboard,
 )
 from utils.messages import (
+    format_available_seats_summary,
     format_booking_info,
     format_booking_success_message,
     format_bus_info,
@@ -584,6 +585,39 @@ class TestMessages:
 
         assert "Ваши записи:" in result
         assert "Автобус ID 999 (бронирование закрыто)" in result
+
+    def test_format_available_seats_summary(self):
+        """Тест сводки доступных мест с листом ожидания."""
+        buses = [
+            BusFactory.build(
+                id=1,
+                number="БУС-001",
+                departure_time="08:00",
+                direction="Туда",
+            ),
+            BusFactory.build(
+                id=2,
+                number="БУС-002",
+                departure_time="09:30",
+                direction="Туда",
+            ),
+            BusFactory.build(
+                id=3,
+                number="БУС-003",
+                departure_time="11:00",
+                direction="Обратно",
+            ),
+        ]
+        available = {1: 3, 2: 0, 3: 1}
+
+        result = format_available_seats_summary(buses, available)
+
+        assert "Информация о доступных местах:" in result
+        assert "Направление: Туда" in result
+        assert "Направление: Обратно" in result
+        assert "Автобус БУС-001 08:00 - 3 мест" in result
+        assert "Автобус БУС-002 09:30 - Доступен лист ожидания" in result
+        assert "Автобус БУС-003 11:00 - 1 мест" in result
 
 
 class TestValidators:

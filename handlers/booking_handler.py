@@ -17,7 +17,11 @@ from utils.keyboards import (
     create_directions_keyboard,
     create_personal_data_prompt_keyboard,
 )
-from utils.messages import format_booking_success_message, format_buses_list_message
+from utils.messages import (
+    format_available_seats_summary,
+    format_booking_success_message,
+    format_buses_list_message,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +56,21 @@ class BookingHandler(BaseHandler):
 
         return manual_reserved_by_bus
 
+    def _build_personal_data_required_message(self) -> str:
+        """Собирает сообщение о необходимости заполнить персональные данные со сводкой мест."""
+        active_buses = self.bus_service.get_active_buses()
+        available_seats_by_bus = {}
+        for bus in active_buses:
+            if bus.id is None:
+                continue
+            availability = self.bus_service.get_bus_availability_info(bus)
+            available_seats_by_bus[bus.id] = availability["free"]
+
+        seats_summary = format_available_seats_summary(
+            active_buses, available_seats_by_bus
+        )
+        return f"{seats_summary}\n\n{MESSAGES['personal_data_required']}"
+
     async def show_directions(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Показывает доступные направления"""
         try:
@@ -65,7 +84,7 @@ class BookingHandler(BaseHandler):
 
             if not passenger.has_confirmed_personal_data():
                 await query.edit_message_text(
-                    MESSAGES["personal_data_required"],
+                    self._build_personal_data_required_message(),
                     reply_markup=create_personal_data_prompt_keyboard(
                         "personal_data_from_booking"
                     ),
@@ -166,7 +185,7 @@ class BookingHandler(BaseHandler):
 
             if not passenger.has_confirmed_personal_data():
                 await query.edit_message_text(
-                    MESSAGES["personal_data_required"],
+                    self._build_personal_data_required_message(),
                     reply_markup=create_personal_data_prompt_keyboard(
                         "personal_data_from_booking"
                     ),

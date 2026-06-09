@@ -2,6 +2,7 @@
 Утилиты для форматирования сообщений
 """
 
+from collections import defaultdict
 from typing import Dict, List, Optional
 
 from config.settings import MESSAGES
@@ -67,6 +68,45 @@ def format_buses_list_message(
         message += format_bus_info(bus, booked, manual_reserved_count) + "\n"
 
     return message
+
+
+def format_available_seats_summary(
+    buses: List[Bus], available_seats_by_bus: Dict[int, int]
+) -> str:
+    """Форматирует сводку доступных мест по направлениям."""
+    if not buses:
+        return "Информация о доступных местах:\nНет доступных автобусов"
+
+    buses_by_direction = defaultdict(list)
+    for bus in buses:
+        direction = (bus.direction or "Не указано").strip() or "Не указано"
+        buses_by_direction[direction].append(bus)
+
+    lines = ["Информация о доступных местах:\n"]
+    sorted_directions = sorted(buses_by_direction.keys(), reverse=False)
+
+    for index, direction in enumerate(sorted_directions):
+        if index > 0:
+            lines.append("")
+        lines.append(f"Направление: {direction}")
+
+        direction_buses = sorted(
+            buses_by_direction[direction],
+            key=lambda bus: (
+                bus.departure_time or "",
+                bus.number or "",
+            ),
+        )
+        for bus in direction_buses:
+            bus_label = f"Автобус {bus.number or 'без номера'}"
+            departure_time = bus.departure_time or "время не указано"
+            free_seats = available_seats_by_bus.get(bus.id, 0)
+            if free_seats > 0:
+                lines.append(f"{bus_label} {departure_time} - {free_seats} мест")
+            else:
+                lines.append(f"{bus_label} {departure_time} - Доступен лист ожидания")
+
+    return "\n".join(lines)
 
 
 def format_user_bookings_message(

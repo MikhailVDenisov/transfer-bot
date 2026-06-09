@@ -400,15 +400,15 @@ class TestExportFlow:
         ws = wb["Автобус БУС-777, Туда"]
         rows = list(ws.iter_rows(values_only=True))
 
-        assert rows[3] == ("Забронированы", None, None)
-        assert rows[4] == ("Фамилия", "Имя", "Отчество")
-        assert rows[5] == ("Алексеев", "Борис", "Игоревич")
-        assert rows[6] == ("Сидоров", "Илья", "Олегович")
-        assert rows[7] == (None, None, None)
-        assert rows[8] == ("Лист ожидания", None, None)
-        assert rows[9] == ("Фамилия", "Имя", "Отчество")
-        assert rows[10] == ("Волков", "Дмитрий", "Сергеевич")
-        assert rows[11] == ("Яковлев", "Антон", "Павлович")
+        assert rows[3] == ("Забронированы", None, None, None, None)
+        assert rows[4] == ("Фамилия", "Имя", "Отчество", "Телефон", "Username")
+        assert rows[5] == ("Алексеев", "Борис", "Игоревич", None, "booked_2")
+        assert rows[6] == ("Сидоров", "Илья", "Олегович", None, "booked_1")
+        assert rows[7] == (None, None, None, None, None)
+        assert rows[8] == ("Лист ожидания", None, None, None, None)
+        assert rows[9] == ("Фамилия", "Имя", "Отчество", "Телефон", "Username")
+        assert rows[10] == ("Волков", "Дмитрий", "Сергеевич", None, "waiting_2")
+        assert rows[11] == ("Яковлев", "Антон", "Павлович", None, "waiting_1")
 
         export_service.cleanup_temp_file(temp_file)
 

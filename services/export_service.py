@@ -5,6 +5,7 @@
 import asyncio
 import logging
 import os
+import re
 from datetime import datetime
 from typing import Dict, List
 
@@ -303,16 +304,17 @@ class ExportService:
             column=1,
             value=f"Автобус {bus.number or ''}, {bus.direction or ''}".strip(", "),
         )
-        year = datetime.now().strftime("%y")
         ws.cell(
             row=2,
             column=1,
-            value=f"Дата: {(bus.departure_date or '').strip()}.{year}".strip("."),
+            value=f"Дата: {self._format_departure_date_for_export(bus.departure_date)}",
         )
 
         ws.column_dimensions["A"].width = 22
         ws.column_dimensions["B"].width = 22
         ws.column_dimensions["C"].width = 22
+        ws.column_dimensions["D"].width = 22
+        ws.column_dimensions["E"].width = 22
 
         ws["A1"].font = Font(name="Calibri", size=14, bold=True)
         ws["A2"].font = Font(name="Calibri", size=12, bold=True)
@@ -365,7 +367,7 @@ class ExportService:
         ws.cell(row=start_row, column=1).font = Font(name="Calibri", size=12, bold=True)
 
         header_row = start_row + 1
-        headers = ("Фамилия", "Имя", "Отчество")
+        headers = ("Фамилия", "Имя", "Отчество", "Телефон", "Username")
         for column, value in enumerate(headers, start=1):
             cell = ws.cell(row=header_row, column=column, value=value)
             cell.font = Font(name="Calibri", size=11, bold=True)
@@ -385,7 +387,10 @@ class ExportService:
             last_name, first_name, patronymic = self._get_passenger_name_parts(
                 passenger
             )
-            values = (last_name, first_name, patronymic)
+            phone = passenger.phone or ""
+            telegram_username = passenger.telegram_username or ""
+
+            values = (last_name, first_name, patronymic, phone, telegram_username)
             for column, value in enumerate(values, start=1):
                 cell = ws.cell(row=data_row, column=column, value=value)
                 cell.font = Font(name="Calibri", size=11)
@@ -418,11 +423,10 @@ class ExportService:
             column=2,
             value=f"Автобус {bus.number or ''}, {bus.direction or ''}".strip(),
         )
-        year = datetime.now().strftime("%y")
         ws.cell(
             row=3,
             column=2,
-            value=f"Дата: {(bus.departure_date or '').strip()}.{year}".strip("."),
+            value=f"Дата: {self._format_departure_date_for_export(bus.departure_date)}",
         )
 
         headers = {
@@ -554,6 +558,22 @@ class ExportService:
             return ""
 
         return citizenship
+
+    @staticmethod
+    def _format_departure_date_for_export(departure_date: str) -> str:
+        """Добавляет короткий год только к датам, где год не указан."""
+        date = (departure_date or "").strip()
+        if not date:
+            return ""
+
+        if re.search(r"\b\d{4}\b", date):
+            return date
+
+        dot_parts = date.split(".")
+        if len(dot_parts) >= 3 and dot_parts[-1].isdigit():
+            return date
+
+        return f"{date}.{datetime.now().strftime('%y')}"
 
     @staticmethod
     def _get_personal_data_border() -> Border:

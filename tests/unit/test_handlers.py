@@ -201,12 +201,48 @@ class TestBookingHandler:
         """Тест запрета бронирования без персональных данных"""
         mock_passenger = PassengerFactory.build(passport_number="")
 
-        with patch.object(
-            handler, "get_or_create_passenger", return_value=mock_passenger
+        with (
+            patch.object(
+                handler, "get_or_create_passenger", return_value=mock_passenger
+            ),
+            patch.object(
+                handler,
+                "_build_personal_data_required_message",
+                return_value="Информация о доступных местах:\n...",
+            ),
         ):
             await handler.show_directions(mock_update_with_callback, mock_context)
 
             mock_update_with_callback.callback_query.edit_message_text.assert_called_once()
+            message_text = mock_update_with_callback.callback_query.edit_message_text.call_args.args[
+                0
+            ]
+            assert "Информация о доступных местах:" in message_text
+
+    @pytest.mark.asyncio
+    async def test_confirm_booking_requires_personal_data(
+        self, handler, mock_update_with_callback, mock_context
+    ):
+        """Тест запрета подтверждения бронирования без персональных данных"""
+        mock_passenger = PassengerFactory.build(passport_number="")
+
+        with (
+            patch.object(
+                handler, "get_or_create_passenger", return_value=mock_passenger
+            ),
+            patch.object(
+                handler,
+                "_build_personal_data_required_message",
+                return_value="Информация о доступных местах:\n...",
+            ),
+        ):
+            await handler.confirm_booking(mock_update_with_callback, mock_context, 1)
+
+            mock_update_with_callback.callback_query.edit_message_text.assert_called_once()
+            message_text = mock_update_with_callback.callback_query.edit_message_text.call_args.args[
+                0
+            ]
+            assert "Информация о доступных местах:" in message_text
 
     @pytest.mark.asyncio
     async def test_confirm_booking_success(
